@@ -13,7 +13,8 @@ Local spectrum and 802.11 packet-analysis dashboard for the MetaGeek Wi-Spy DBx3
 - Live target validation against WOPR-II's directly connected RFC1918 routes
 - Structured JSON scan recordings with exact-MAC correlation to observed wireless devices
 - Unified investigation sessions that coordinate spectrum, PCAP, AP, and Nmap collection
-- One-click single-host Deep Dive actions from discovered-host cards
+- One-click single-host Deep Dive action for the selected IP address
+- Responsive two-column analysis layout with selectable host inventory and a dedicated Deep Dive drawer
 
 ## Install on WOPR-II
 
@@ -56,6 +57,8 @@ The POST body is JSON:
 ```
 
 Valid profiles are `quick`, `inventory`, `services`, and `deep_host`. Deep-host scans accept exactly one IPv4 address. Completed results are saved under `recordings/nmap-*.json`.
+
+The dashboard keeps the most recent discovery/inventory result visible while a selected-host Deep Dive runs. Hostnames appear when Nmap discovers reverse-DNS names. Deep Dive results include open services, versions, wireless MAC correlation, and output from Nmap's fixed `safe` script category.
 
 ## Investigation-session API
 

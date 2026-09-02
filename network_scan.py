@@ -122,6 +122,11 @@ def parse_nmap_xml(text):
                 "product": service.get("product") if service is not None else None,
                 "version": service.get("version") if service is not None else None,
                 "extra": service.get("extrainfo") if service is not None else None,
+                "scripts": [
+                    {"id": script.get("id"), "output": script.get("output")}
+                    for script in port.findall("script")
+                    if script.get("id") or script.get("output")
+                ],
             })
         os_matches = []
         for match in node.findall("os/osmatch")[:3]:
@@ -135,6 +140,11 @@ def parse_nmap_xml(text):
             "hostnames": hostnames,
             "ports": ports,
             "os": os_matches,
+            "scripts": [
+                {"id": script.get("id"), "output": script.get("output")}
+                for script in node.findall("hostscript/script")
+                if script.get("id") or script.get("output")
+            ],
         })
     runstats = root.find("runstats/finished")
     return {
@@ -151,6 +161,8 @@ class NetworkScanner:
         self.lock = threading.Lock()
         self.running = None
         self.last_result = None
+        self.last_inventory_result = None
+        self.last_deep_result = None
         self.error = None
         self.history = []
 
@@ -173,6 +185,8 @@ class NetworkScanner:
                 "allowed_targets": routes,
                 "running": running,
                 "last_result": self.last_result,
+                "last_inventory_result": self.last_inventory_result,
+                "last_deep_result": self.last_deep_result,
                 "history": self.history[-10:],
                 "error": self.error or route_error,
             }
@@ -244,13 +258,22 @@ class NetworkScanner:
             output_path.write_text(json.dumps(completed, indent=2) + "\n")
             with self.lock:
                 self.last_result = completed
+                if job["profile"] == "deep_host":
+                    self.last_deep_result = completed
+                else:
+                    self.last_inventory_result = completed
                 self.history.append({key: completed.get(key) for key in ("id", "profile", "profile_name", "target", "started_at", "finished_at", "host_count", "recording")})
                 self.error = None
         except Exception as exc:
             with self.lock:
                 self.error = str(exc)
                 public_job = {key: value for key, value in job.items() if not key.startswith("_")}
-                self.last_result = {**public_job, "finished_at": time.time(), "status": "error", "error": str(exc)}
+                failed = {**public_job, "finished_at": time.time(), "status": "error", "error": str(exc)}
+                self.last_result = failed
+                if job["profile"] == "deep_host":
+                    self.last_deep_result = failed
+                else:
+                    self.last_inventory_result = failed
         finally:
             with self.lock:
                 self.running = None

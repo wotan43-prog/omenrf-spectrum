@@ -16,23 +16,6 @@
       input {
         min-width: 230px;
       }
-      .network-host {
-        flex-basis: 280px;
-      }
-      .network-host small {
-        display: block;
-        clear: both;
-        color: var(--muted);
-        padding-top: 5px;
-      }
-      .network-host .ports {
-        color: #d3dde0;
-        font-size: 12px;
-        margin-top: 6px;
-      }
-      .network-host .match {
-        color: var(--amber);
-      }
       :root {
         color-scheme: dark;
         --bg: #080b0d;
@@ -157,11 +140,81 @@
         border-color: #45b88b;
         box-shadow: inset 3px 0 #45b88b;
       }
-      .deep-dive {
-        float: right;
-        margin-top: 8px;
-        padding: 5px 9px;
-        font-size: 11px;
+      .quadrant-grid {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+        gap: 14px;
+        align-items: start;
+      }
+      .quadrant-grid > section {
+        min-width: 0;
+      }
+      .network-table-wrap {
+        overflow: auto;
+        max-height: 390px;
+        border: 1px solid var(--grid);
+        border-radius: 8px;
+      }
+      .network-table {
+        width: 100%;
+        border-collapse: collapse;
+        font-size: 12px;
+      }
+      .network-table th,
+      .network-table td {
+        padding: 8px 10px;
+        border-bottom: 1px solid var(--grid);
+        text-align: left;
+        vertical-align: top;
+      }
+      .network-table th {
+        position: sticky;
+        top: 0;
+        color: var(--muted);
+        background: #0d1316;
+        z-index: 1;
+      }
+      .network-table tr:last-child td {
+        border-bottom: 0;
+      }
+      .network-table tr.selected td {
+        background: #12352b;
+      }
+      .host-ip {
+        border: 0;
+        padding: 2px 4px;
+        background: transparent;
+        color: var(--green);
+        font-family: ui-monospace, monospace;
+        font-weight: 700;
+      }
+      .host-ip:hover,
+      .host-ip:focus-visible {
+        text-decoration: underline;
+        outline: 1px solid var(--green);
+      }
+      .selected-host {
+        color: var(--green);
+        min-height: 17px;
+      }
+      .deep-summary {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 8px;
+        margin-bottom: 12px;
+      }
+      .script-output {
+        white-space: pre-wrap;
+        overflow-wrap: anywhere;
+        color: #d3dde0;
+        background: #080b0d;
+        border: 1px solid var(--grid);
+        border-radius: 6px;
+        padding: 8px;
+        margin: 5px 0 10px;
+        font:
+          11px ui-monospace,
+          monospace;
       }
       .inspectable {
         cursor: pointer;
@@ -321,6 +374,11 @@
         color: var(--amber);
         float: right;
       }
+      @media (max-width: 1150px) {
+        .quadrant-grid {
+          grid-template-columns: minmax(0, 1fr);
+        }
+      }
       @media (max-width: 700px) {
         .control-row {
           align-items: stretch;
@@ -351,7 +409,7 @@
     <header>
       <h1>
         <span class="omen">OMEN</span>RF / SPECTRUM + PACKETS
-        <small>v0.8</small>
+        <small>v0.9</small>
       </h1>
       <div class="status" id="status">Connecting…</div>
     </header>
@@ -403,89 +461,116 @@
           </div>
         </div>
       </section>
-      <section class="channels">
-        <p class="section-title">
-          WI-FI ANALYSIS — LINKSYS WUSB6300 V2 / WLAN1
-        </p>
-        <div class="control-row">
-          <div class="control-group">
-            <span class="control-label">Monitor channel</span>
-            <div class="control-actions">
-              <select id="capChannel" aria-label="Monitor channel"></select>
-              <select id="capWidth" aria-label="Channel width">
-                <option value="20">20 MHz</option>
-                <option value="40">40 MHz</option>
-                <option value="80">80 MHz</option>
-              </select>
-              <button id="capTune">Apply Channel</button>
+      <div class="quadrant-grid">
+        <section class="card">
+          <p class="label">
+            SPECTRUM ANALYZER — CURRENT
+            <span style="color: #67f5b5">■</span> / AVERAGE
+            <span style="color: #5d8b91">■</span> / PEAK HOLD
+            <span style="color: #ffc857">■</span
+            ><span id="cursor">Move cursor over trace</span>
+          </p>
+          <canvas id="trace"></canvas>
+          <p class="label" style="margin-top: 10px">
+            ESTIMATED CHANNEL OCCUPANCY &gt; −82 dBm
+          </p>
+          <div class="channel-grid" id="channelGrid"></div>
+        </section>
+        <section class="card">
+          <p class="label">WATERFALL — NEWEST AT TOP</p>
+          <canvas id="water"></canvas>
+        </section>
+        <section class="channels">
+          <p class="section-title">
+            WI-FI ANALYSIS — LINKSYS WUSB6300 V2 / WLAN1
+          </p>
+          <div class="control-row">
+            <div class="control-group">
+              <span class="control-label">Monitor channel</span>
+              <div class="control-actions">
+                <select id="capChannel" aria-label="Monitor channel"></select>
+                <select id="capWidth" aria-label="Channel width">
+                  <option value="20">20 MHz</option>
+                  <option value="40">40 MHz</option>
+                  <option value="80">80 MHz</option>
+                </select>
+                <button id="capTune">Apply Channel</button>
+              </div>
+            </div>
+            <div class="control-group">
+              <span class="control-label">Wireless actions</span>
+              <div class="control-actions">
+                <button id="capScan" class="primary">Scan for APs</button>
+                <button id="capRecord">Start Packet Capture</button>
+                <button id="capInspect">Inspect Packets</button>
+              </div>
+            </div>
+            <div class="metrics">
+              <div class="metric">Frames/sec<b id="capFps">0</b></div>
+              <div class="metric">Frames<b id="capTotal">0</b></div>
+              <div class="metric">Last RSSI<b id="capRssi">—</b></div>
             </div>
           </div>
-          <div class="control-group">
-            <span class="control-label">Wireless actions</span>
-            <div class="control-actions">
-              <button id="capScan" class="primary">Scan for APs</button>
-              <button id="capRecord">Start Packet Capture</button>
-              <button id="capInspect">Inspect Packets</button>
+          <div class="channel-grid" id="frameTypes"></div>
+          <div class="channel-grid" id="apTable"></div>
+          <p class="label" id="capStatus">Capture starting…</p>
+        </section>
+        <section class="channels">
+          <p class="section-title">LOCAL NETWORK DISCOVERY — NMAP</p>
+          <div class="control-row">
+            <div class="control-group">
+              <label class="control-label" for="netProfile">Scan profile</label>
+              <select id="netProfile"></select>
+            </div>
+            <div class="control-group">
+              <label class="control-label" for="netTarget">Target scope</label>
+              <input
+                id="netTarget"
+                list="netTargets"
+                placeholder="Connected private subnet or host"
+              />
+              <datalist id="netTargets"></datalist>
+            </div>
+            <div class="control-group">
+              <span class="control-label">Network action</span>
+              <button id="netRun" class="primary">Start Network Scan</button>
+            </div>
+            <div class="metrics">
+              <div class="metric">Hosts<b id="netHosts">0</b></div>
+              <div class="metric">Open ports<b id="netPorts">0</b></div>
             </div>
           </div>
-          <div class="metrics">
-            <div class="metric">Frames/sec<b id="capFps">0</b></div>
-            <div class="metric">Frames<b id="capTotal">0</b></div>
-            <div class="metric">Last RSSI<b id="capRssi">—</b></div>
+          <div class="control-row">
+            <div class="control-group">
+              <span class="control-label">Selected host</span>
+              <span class="selected-host" id="netSelected"
+                >Click an IP address below</span
+              >
+            </div>
+            <button id="netDeep" class="primary" disabled>
+              Deep Dive Selected Host
+            </button>
           </div>
-        </div>
-        <div class="channel-grid" id="frameTypes"></div>
-        <div class="channel-grid" id="apTable"></div>
-        <p class="label" id="capStatus">Capture starting…</p>
-      </section>
-      <section class="channels">
-        <p class="section-title">LOCAL NETWORK DISCOVERY — NMAP</p>
-        <div class="control-row">
-          <div class="control-group">
-            <label class="control-label" for="netProfile">Scan profile</label>
-            <select id="netProfile"></select>
+          <p class="label" id="netDescription"></p>
+          <p class="label" id="netStatus">
+            Finding directly connected private subnets…
+          </p>
+          <div class="network-table-wrap">
+            <table class="network-table">
+              <thead>
+                <tr>
+                  <th>IP</th>
+                  <th>Hostname</th>
+                  <th>MAC / Vendor</th>
+                  <th>Wireless</th>
+                  <th>Open ports</th>
+                </tr>
+              </thead>
+              <tbody id="netResults"></tbody>
+            </table>
           </div>
-          <div class="control-group">
-            <label class="control-label" for="netTarget">Target scope</label>
-            <input
-              id="netTarget"
-              list="netTargets"
-              placeholder="Connected private subnet or host"
-            />
-            <datalist id="netTargets"></datalist>
-          </div>
-          <div class="control-group">
-            <span class="control-label">Network action</span>
-            <button id="netRun" class="primary">Start Network Scan</button>
-          </div>
-          <div class="metrics">
-            <div class="metric">Hosts<b id="netHosts">0</b></div>
-            <div class="metric">Open ports<b id="netPorts">0</b></div>
-          </div>
-        </div>
-        <p class="label" id="netDescription"></p>
-        <p class="label" id="netStatus">
-          Finding directly connected private subnets…
-        </p>
-        <div class="channel-grid" id="netResults"></div>
-      </section>
-      <section class="card">
-        <p class="label">
-          CURRENT <span style="color: #67f5b5">■</span> / AVERAGE
-          <span style="color: #5d8b91">■</span> / PEAK HOLD
-          <span style="color: #ffc857">■</span
-          ><span id="cursor">Move cursor over trace</span>
-        </p>
-        <canvas id="trace"></canvas>
-      </section>
-      <section class="channels">
-        <p class="label">ESTIMATED CHANNEL OCCUPANCY &gt; −82 dBm</p>
-        <div class="channel-grid" id="channelGrid"></div>
-      </section>
-      <section class="card">
-        <p class="label">WATERFALL — NEWEST AT TOP</p>
-        <canvas id="water"></canvas>
-      </section>
+        </section>
+      </div>
     </main>
     <div class="drawer-backdrop" id="drawerBackdrop"></div>
     <aside
@@ -548,6 +633,22 @@
         </p>
         <div id="captureFiles"></div>
       </section>
+    </aside>
+    <div class="drawer-backdrop" id="deepBackdrop"></div>
+    <aside
+      class="capture-drawer"
+      id="deepDrawer"
+      aria-hidden="true"
+      aria-label="Deep Dive results"
+    >
+      <div class="drawer-header">
+        <h2>SELECTED HOST DEEP DIVE</h2>
+        <button id="deepClose" aria-label="Close Deep Dive results">
+          Close
+        </button>
+      </div>
+      <p class="label" id="deepStatus">Select an IP address to begin.</p>
+      <div id="deepResults"></div>
     </aside>
     <script>
       const T = document.querySelector("#trace"),
@@ -967,7 +1068,10 @@
       document.querySelector("#drawerClose").onclick = closeCaptureDrawer;
       drawerBackdrop.onclick = closeCaptureDrawer;
       document.onkeydown = (event) => {
-        if (event.key === "Escape") closeCaptureDrawer();
+        if (event.key === "Escape") {
+          closeCaptureDrawer();
+          closeDeepDrawer();
+        }
       };
       document
         .querySelectorAll(".drawer-tab")
@@ -1008,9 +1112,16 @@
       pollCapture();
       const netProfile = document.querySelector("#netProfile"),
         netTarget = document.querySelector("#netTarget"),
-        netRun = document.querySelector("#netRun");
+        netRun = document.querySelector("#netRun"),
+        netDeep = document.querySelector("#netDeep"),
+        deepDrawer = document.querySelector("#deepDrawer"),
+        deepBackdrop = document.querySelector("#deepBackdrop");
       let netProfiles = [],
-        lastNetResult = "";
+        lastInventoryResult = "",
+        lastDeepResult = "",
+        selectedHostIp = "",
+        inventoryHosts = [],
+        networkScanRunning = false;
       function esc(v) {
         return String(v ?? "").replace(
           /[&<>"']/g,
@@ -1038,39 +1149,112 @@
           );
         document.querySelector("#netHosts").textContent = hosts.length;
         document.querySelector("#netPorts").textContent = openPorts.length;
+        inventoryHosts = hosts;
+        if (selectedHostIp && !hosts.some((host) => host.ip === selectedHostIp))
+          selectedHostIp = "";
         document.querySelector("#netResults").innerHTML =
           hosts
             .map((h) => {
-              let name = h.hostnames?.[0] || h.ip || "Unknown host",
-                ports = (h.ports || [])
-                  .filter((p) => p.state === "open")
-                  .map((p) =>
-                    esc(
-                      `${p.port}/${p.protocol} ${p.service || ""}${p.product ? " · " + p.product : ""}`,
-                    ),
-                  )
-                  .join("<br>"),
-                os = h.os?.[0] ? `${h.os[0].name} (${h.os[0].accuracy}%)` : "",
-                match = h.wireless_match
-                  ? `Wireless match: ${h.wireless_match.ssid || h.wireless_match.bssid}${h.wireless_match.rssi == null ? "" : " · " + h.wireless_match.rssi + " dBm"}`
-                  : "";
-              return `<div class="channel network-host"><span>${esc(h.ip || "")}</span><b>${esc(name)}</b><small>${esc([h.mac, h.vendor, os].filter(Boolean).join(" · "))}</small>${ports ? `<div class="ports">${ports}</div>` : ""}${match ? `<small class="match">${esc(match)}</small>` : ""}${h.ip ? `<button class="deep-dive" data-deep-ip="${esc(h.ip)}">Deep Dive</button>` : ""}</div>`;
+              let hostname = h.hostnames?.[0] || "—",
+                ports =
+                  (h.ports || [])
+                    .filter((p) => p.state === "open")
+                    .map((p) =>
+                      `${p.port}/${p.protocol} ${p.service || ""}`.trim(),
+                    )
+                    .join(", ") || "—",
+                macVendor =
+                  [h.mac, h.vendor].filter(Boolean).join(" · ") || "—",
+                wireless = h.wireless_match
+                  ? `${h.wireless_match.ssid || h.wireless_match.bssid}${h.wireless_match.rssi == null ? "" : " · " + h.wireless_match.rssi + " dBm"}`
+                  : "—";
+              return `<tr class="${h.ip === selectedHostIp ? "selected" : ""}" data-host-row="${esc(h.ip || "")}"><td>${h.ip ? `<button class="host-ip" data-host-ip="${esc(h.ip)}" aria-pressed="${h.ip === selectedHostIp}">${esc(h.ip)}</button>` : "—"}</td><td>${esc(hostname)}</td><td>${esc(macVendor)}</td><td>${esc(wireless)}</td><td>${esc(ports)}</td></tr>`;
             })
             .join("") ||
-          '<span class="label">No responding hosts in the latest scan.</span>';
-        document.querySelectorAll(".deep-dive").forEach((button) => {
-          button.onclick = () => runDeepDive(button.dataset.deepIp);
-        });
+          '<tr><td colspan="5" class="label">No responding hosts in the latest scan.</td></tr>';
+        document
+          .querySelectorAll(".host-ip")
+          .forEach(
+            (button) =>
+              (button.onclick = () => selectHost(button.dataset.hostIp)),
+          );
+        updateSelectedHost();
       }
-      async function runDeepDive(ip) {
+      function selectHost(ip) {
+        selectedHostIp = selectedHostIp === ip ? "" : ip;
+        renderNetwork({ hosts: inventoryHosts });
+      }
+      function updateSelectedHost() {
+        let host = inventoryHosts.find((item) => item.ip === selectedHostIp),
+          hostname = host?.hostnames?.[0];
+        document.querySelector("#netSelected").textContent = host
+          ? `${host.ip}${hostname ? " · " + hostname : ""}`
+          : "Click an IP address below";
+        netDeep.disabled = !host || networkScanRunning;
+      }
+      function openDeepDrawer() {
+        deepDrawer.classList.add("open");
+        deepBackdrop.classList.add("open");
+        deepDrawer.setAttribute("aria-hidden", "false");
+      }
+      function closeDeepDrawer() {
+        deepDrawer.classList.remove("open");
+        deepBackdrop.classList.remove("open");
+        deepDrawer.setAttribute("aria-hidden", "true");
+      }
+      function scriptBlocks(scripts) {
+        return (scripts || [])
+          .map(
+            (script) =>
+              `<b>${esc(script.id || "Nmap script")}</b><div class="script-output">${esc(script.output || "No output")}</div>`,
+          )
+          .join("");
+      }
+      function renderDeepDive(result) {
+        let host = result?.hosts?.[0];
+        if (!host) {
+          document.querySelector("#deepResults").innerHTML =
+            '<p class="label">The selected host did not respond.</p>';
+          return;
+        }
+        let hostname = host.hostnames?.[0] || "—",
+          wireless = host.wireless_match
+            ? `${host.wireless_match.ssid || host.wireless_match.bssid}${host.wireless_match.rssi == null ? "" : " · " + host.wireless_match.rssi + " dBm"}`
+            : "No exact MAC correlation",
+          ports = (host.ports || []).filter((port) => port.state === "open"),
+          portRows = ports
+            .map((port) => {
+              let service = [
+                port.service,
+                port.product,
+                port.version,
+                port.extra,
+              ]
+                .filter(Boolean)
+                .join(" · ");
+              return `<tr><td>${esc(port.port + "/" + port.protocol)}</td><td>${esc(service || "Unknown")}${scriptBlocks(port.scripts)}</td></tr>`;
+            })
+            .join("");
+        document.querySelector("#deepStatus").textContent =
+          `${result.profile_name} completed in ${Number(result.elapsed_seconds || 0).toFixed(1)} seconds`;
+        document.querySelector("#deepResults").innerHTML =
+          `<div class="deep-summary"><div class="channel"><span>IP address</span><b>${esc(host.ip)}</b></div><div class="channel"><span>Hostname</span><b>${esc(hostname)}</b></div><div class="channel"><span>MAC / Vendor</span><b>${esc([host.mac, host.vendor].filter(Boolean).join(" · ") || "—")}</b></div><div class="channel"><span>Wireless match</span><b>${esc(wireless)}</b></div></div><p class="section-title">OPEN SERVICES</p><table class="drawer-table"><thead><tr><th>Port</th><th>Service and script results</th></tr></thead><tbody>${portRows || '<tr><td colspan="2">No open TCP ports found.</td></tr>'}</tbody></table>${host.scripts?.length ? `<p class="section-title" style="margin-top: 16px">HOST SCRIPT RESULTS</p>${scriptBlocks(host.scripts)}` : ""}${result.recording ? `<a href="/api/recordings/${encodeURIComponent(result.recording)}"><button>Download JSON Result</button></a>` : ""}`;
+        openDeepDrawer();
+      }
+      async function runDeepDive() {
+        if (!selectedHostIp) return;
         try {
-          netProfile.value = "deep_host";
-          netTarget.value = ip;
-          updateNetDescription();
+          document.querySelector("#deepStatus").textContent =
+            `Deep Dive running against ${selectedHostIp}…`;
+          document.querySelector("#deepResults").innerHTML = "";
+          openDeepDrawer();
           let response = await fetch("/api/nmap/run", {
               method: "POST",
               headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ profile: "deep_host", target: ip }),
+              body: JSON.stringify({
+                profile: "deep_host",
+                target: selectedHostIp,
+              }),
             }),
             body = await response.json();
           if (!response.ok) throw Error(body.error || response.statusText);
@@ -1083,9 +1267,9 @@
           let x = await (await fetch("/api/nmap/state")).json();
           netProfiles = x.profiles || [];
           if (!netProfile.options.length) {
-            netProfiles.forEach((p) =>
-              netProfile.add(new Option(p.name, p.id)),
-            );
+            netProfiles
+              .filter((profile) => profile.id !== "deep_host")
+              .forEach((p) => netProfile.add(new Option(p.name, p.id)));
             updateNetDescription();
           }
           let list = document.querySelector("#netTargets");
@@ -1097,7 +1281,9 @@
             .join("");
           if (!netTarget.value && x.allowed_targets?.length)
             netTarget.value = x.allowed_targets[0].network;
+          networkScanRunning = !!x.running;
           netRun.disabled = !!x.running;
+          netDeep.disabled = !!x.running || !selectedHostIp;
           netRun.textContent = x.running
             ? "Network Scan Running…"
             : "Start Network Scan";
@@ -1108,8 +1294,8 @@
           } else if (x.error) {
             status.textContent = "SCAN ERROR: " + x.error;
             status.className = "label error";
-          } else if (x.last_result?.status === "complete") {
-            status.textContent = `${x.last_result.profile_name} completed in ${Number(x.last_result.elapsed_seconds || 0).toFixed(1)} seconds · ${x.last_result.host_count} hosts · saved as ${x.last_result.recording}`;
+          } else if (x.last_inventory_result?.status === "complete") {
+            status.textContent = `${x.last_inventory_result.profile_name} completed in ${Number(x.last_inventory_result.elapsed_seconds || 0).toFixed(1)} seconds · ${x.last_inventory_result.host_count} hosts · saved as ${x.last_inventory_result.recording}`;
             status.className = "label";
           } else {
             status.textContent = (x.allowed_targets || []).length
@@ -1117,12 +1303,28 @@
               : "No directly connected private subnet found.";
             status.className = "label";
           }
+          let inventory =
+            x.last_inventory_result ||
+            (x.last_result?.profile !== "deep_host" ? x.last_result : null);
           if (
-            x.last_result?.status === "complete" &&
-            x.last_result.id !== lastNetResult
+            inventory?.status === "complete" &&
+            inventory.id !== lastInventoryResult
           ) {
-            lastNetResult = x.last_result.id;
-            renderNetwork(x.last_result);
+            lastInventoryResult = inventory.id;
+            renderNetwork(inventory);
+          }
+          let deep =
+            x.last_deep_result ||
+            (x.last_result?.profile === "deep_host" ? x.last_result : null);
+          if (deep?.status === "complete" && deep.id !== lastDeepResult) {
+            lastDeepResult = deep.id;
+            renderDeepDive(deep);
+          } else if (deep?.status === "error" && deep.id !== lastDeepResult) {
+            lastDeepResult = deep.id;
+            document.querySelector("#deepStatus").textContent =
+              "DEEP DIVE ERROR: " + deep.error;
+            document.querySelector("#deepResults").innerHTML = "";
+            openDeepDrawer();
           }
         } catch (e) {
           document.querySelector("#netStatus").textContent =
@@ -1132,6 +1334,9 @@
         setTimeout(pollNetwork, 1000);
       }
       netProfile.onchange = updateNetDescription;
+      netDeep.onclick = runDeepDive;
+      document.querySelector("#deepClose").onclick = closeDeepDrawer;
+      deepBackdrop.onclick = closeDeepDrawer;
       netRun.onclick = async () => {
         try {
           let r = await fetch("/api/nmap/run", {
