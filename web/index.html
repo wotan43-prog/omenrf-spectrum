@@ -180,11 +180,11 @@
         border-radius: 8px;
       }
       #trace {
-        height: 330px;
+        height: 165px;
         cursor: crosshair;
       }
       #water {
-        height: 260px;
+        height: 130px;
       }
       .label {
         color: var(--muted);
@@ -249,7 +249,7 @@
     <header>
       <h1>
         <span class="omen">OMEN</span>RF / SPECTRUM + PACKETS
-        <small>v0.6</small>
+        <small>v0.7</small>
       </h1>
       <div class="status" id="status">Connecting…</div>
     </header>
@@ -597,10 +597,14 @@
         (document.querySelector("#cursor").textContent =
           "Move cursor over trace");
       const capCh = document.querySelector("#capChannel");
+      const capWidth = document.querySelector("#capWidth");
+      let captureSelectionDirty = false;
       [
         1, 6, 11, 36, 40, 44, 48, 52, 56, 60, 64, 100, 104, 108, 112, 116, 120,
         124, 128, 132, 136, 140, 144, 149, 153, 157, 161, 165,
       ].forEach((ch) => capCh.add(new Option("Channel " + ch, ch)));
+      capCh.onchange = () => (captureSelectionDirty = true);
+      capWidth.onchange = () => (captureSelectionDirty = true);
       async function pollCapture() {
         try {
           let x = await (await fetch("/api/capture/state")).json();
@@ -608,9 +612,10 @@
           document.querySelector("#capTotal").textContent = x.total;
           document.querySelector("#capRssi").textContent =
             x.rssi == null ? "—" : x.rssi + " dBm";
-          if (document.activeElement !== capCh) capCh.value = x.channel;
-          const capWidth = document.querySelector("#capWidth");
-          if (document.activeElement !== capWidth) capWidth.value = x.width;
+          if (!captureSelectionDirty) {
+            capCh.value = x.channel;
+            capWidth.value = x.width;
+          }
           document.querySelector("#capStatus").textContent = x.error
             ? "CAPTURE ERROR: " + x.error
             : `wlan1 • channel ${x.channel} • ${x.width} MHz${x.recording ? " • recording " + x.recording : ""}`;
@@ -648,12 +653,12 @@
       }
       document.querySelector("#capTune").onclick = async () => {
         try {
-          await post(
-            "/api/capture/tune/" +
-              capCh.value +
-              "/" +
-              document.querySelector("#capWidth").value,
+          let tuned = await post(
+            "/api/capture/tune/" + capCh.value + "/" + capWidth.value,
           );
+          capCh.value = tuned.channel;
+          capWidth.value = tuned.width;
+          captureSelectionDirty = false;
         } catch (e) {
           alert(e.message);
         }
