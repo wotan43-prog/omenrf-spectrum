@@ -85,13 +85,23 @@ class PacketRadio:
 
     def toggle_recording(self):
         if self.record_proc and self.record_proc.poll() is None:
-            self.record_proc.send_signal(signal.SIGINT); self.record_proc.wait(timeout=5); self.record_proc=None; self.recording=None
+            self.stop_recording()
         else:
             name=f"wifi-{time.strftime('%Y%m%d-%H%M%S')}-ch{self.channel}.pcap"
-            path=self.root/'recordings'/name
-            self.record_proc=subprocess.Popen(['tcpdump','-U','-i',self.iface,'-s','0','-w',str(path)],stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)
-            self.recording=name
+            self.start_recording(self.root/'recordings'/name,display_name=name)
         return self.state()
+
+    def start_recording(self,path,display_name=None):
+        if self.record_proc and self.record_proc.poll() is None: raise RuntimeError('packet capture is already recording')
+        path=Path(path); path.parent.mkdir(parents=True,exist_ok=True)
+        self.record_proc=subprocess.Popen(['tcpdump','-U','-i',self.iface,'-s','0','-w',str(path)],stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)
+        self.recording=display_name or path.name
+        return self.recording
+
+    def stop_recording(self):
+        if self.record_proc and self.record_proc.poll() is None:
+            self.record_proc.send_signal(signal.SIGINT); self.record_proc.wait(timeout=5)
+        self.record_proc=None; self.recording=None
 
     def scan(self):
         out=subprocess.run(['iw','dev',self.scan_iface,'scan'],capture_output=True,text=True,timeout=20,check=True).stdout

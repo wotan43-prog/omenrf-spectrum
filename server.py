@@ -5,6 +5,7 @@ from http.server import ThreadingHTTPServer, SimpleHTTPRequestHandler
 from pathlib import Path
 from urllib.parse import urlparse
 from capture import PacketRadio
+from investigation import InvestigationManager
 from network_scan import NetworkScanner
 
 ROOT=Path(__file__).resolve().parent; WEB=ROOT/'web'
@@ -13,6 +14,19 @@ state={'band':0,'running':True,'recording':False,'latest':None,'ranges':[],'erro
 history=deque(maxlen=600); lock=threading.Lock(); proc=None
 radio=None
 network_scanner=None
+investigation=None
+
+def start_spectrum_recording(path):
+    with lock:
+        if state['recording']: raise RuntimeError('spectrum recording is already active')
+        state['recording_file']=str(path) if path else None; state['recording']=True
+
+def stop_spectrum_recording():
+    with lock:
+        state['recording']=False; state['recording_file']=None
+
+def spectrum_is_recording():
+    with lock: return state['recording']
 
 def ranges():
     out=subprocess.check_output([str(SPECTOOL),'-l'],text=True,stderr=subprocess.DEVNULL)
@@ -42,7 +56,9 @@ def worker():
                 with lock:
                     state['latest']=sweep; history.append(sweep); state['error']=None
                 if state['recording']:
-                    with open(ROOT/'recordings'/f"capture-{time.strftime('%Y%m%d')}.jsonl",'a') as f: f.write(json.dumps(sweep)+'\n')
+                    target=Path(state.get('recording_file') or ROOT/'recordings'/f"capture-{time.strftime('%Y%m%d')}.jsonl")
+                    target.parent.mkdir(parents=True,exist_ok=True)
+                    with open(target,'a') as f: f.write(json.dumps(sweep)+'\n')
             proc.terminate(); proc.wait(timeout=2)
         except Exception as e:
             state['error']=str(e); time.sleep(1)
@@ -64,6 +80,7 @@ class Handler(SimpleHTTPRequestHandler):
             with lock: self.json({'band':state['band'],'recording':state['recording'],'ranges':state['ranges'],'latest':state['latest'],'error':state['error']}); return
         if p=='/api/capture/state': self.json(radio.state()); return
         if p=='/api/nmap/state': self.json(network_scanner.state()); return
+        if p=='/api/investigation/state': self.json(investigation.state()); return
         if p.startswith('/api/recordings/'):
             name=Path(p).name; target=(ROOT/'recordings'/name).resolve()
             if target.parent != (ROOT/'recordings').resolve() or not target.exists(): return self.json({'error':'not found'},404)
@@ -79,7 +96,11 @@ class Handler(SimpleHTTPRequestHandler):
             state['band']=n
             if proc: proc.terminate()
             return self.json({'ok':True,'band':n})
-        if p=='/api/record': state['recording']=not state['recording']; return self.json({'ok':True,'recording':state['recording']})
+        if p=='/api/record':
+            if investigation.is_active(): return self.json({'error':'recording is controlled by the active investigation'},409)
+            if state['recording']: stop_spectrum_recording()
+            else: start_spectrum_recording(None)
+            return self.json({'ok':True,'recording':state['recording']})
         if p=='/api/reset':
             with lock: history.clear()
             return self.json({'ok':True})
@@ -88,6 +109,7 @@ class Handler(SimpleHTTPRequestHandler):
                 _,ch,width=p.rsplit('/',2); return self.json(radio.tune(int(ch),int(width)))
             except Exception as e: return self.json({'error':str(e)},400)
         if p=='/api/capture/record':
+            if investigation.is_active(): return self.json({'error':'packet capture is controlled by the active investigation'},409)
             try: return self.json(radio.toggle_recording())
             except Exception as e: return self.json({'error':str(e)},500)
         if p=='/api/capture/scan':
@@ -99,11 +121,22 @@ class Handler(SimpleHTTPRequestHandler):
                 return self.json({'ok':True,'job':network_scanner.start(body.get('profile'),body.get('target'))},202)
             except RuntimeError as e: return self.json({'error':str(e)},409)
             except Exception as e: return self.json({'error':str(e)},400)
+        if p=='/api/investigation/start':
+            try:
+                body=self.json_body()
+                return self.json(investigation.start(body.get('target')),202)
+            except RuntimeError as e: return self.json({'error':str(e)},409)
+            except Exception as e: return self.json({'error':str(e)},400)
+        if p=='/api/investigation/stop':
+            try: return self.json(investigation.stop())
+            except RuntimeError as e: return self.json({'error':str(e)},409)
+            except Exception as e: return self.json({'error':str(e)},500)
         self.json({'error':'not found'},404)
 
 if __name__=='__main__':
     (ROOT/'recordings').mkdir(exist_ok=True); state['ranges']=ranges(); radio=PacketRadio(ROOT)
     network_scanner=NetworkScanner(ROOT,radio.wireless_snapshot)
+    investigation=InvestigationManager(ROOT,radio,network_scanner,start_spectrum_recording,stop_spectrum_recording,spectrum_is_recording)
     if not state['ranges']: raise SystemExit('No DBx3 sweep ranges found')
     threading.Thread(target=worker,daemon=True).start()
     host=os.environ.get('OMENRF_HOST','0.0.0.0'); port=int(os.environ.get('OMENRF_PORT','8765'))

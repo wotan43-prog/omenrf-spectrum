@@ -145,6 +145,24 @@
         color: var(--green);
         font-weight: 600;
       }
+      button.secondary-danger {
+        border-color: #8d4a4a;
+        color: #ffaaaa;
+      }
+      button:disabled {
+        cursor: not-allowed;
+        opacity: 0.45;
+      }
+      .session-active {
+        border-color: #45b88b;
+        box-shadow: inset 3px 0 #45b88b;
+      }
+      .deep-dive {
+        float: right;
+        margin-top: 8px;
+        padding: 5px 9px;
+        font-size: 11px;
+      }
       .metrics {
         display: flex;
         gap: 24px;
@@ -231,11 +249,36 @@
     <header>
       <h1>
         <span class="omen">OMEN</span>RF / SPECTRUM + PACKETS
-        <small>v0.5</small>
+        <small>v0.6</small>
       </h1>
       <div class="status" id="status">Connecting…</div>
     </header>
     <main>
+      <section class="channels" id="investigationPanel">
+        <p class="section-title">INVESTIGATION SESSION</p>
+        <div class="control-row">
+          <div class="control-group">
+            <span class="control-label">Coordinated capture</span>
+            <div class="control-actions">
+              <button id="sessionStart" class="primary">
+                Start Investigation
+              </button>
+              <button id="sessionStop" class="secondary-danger" disabled>
+                Stop Investigation
+              </button>
+            </div>
+          </div>
+          <div class="metrics">
+            <div class="metric">Session<b id="sessionState">Ready</b></div>
+            <div class="metric">APs<b id="sessionAps">0</b></div>
+            <div class="metric">Hosts<b id="sessionHosts">0</b></div>
+          </div>
+        </div>
+        <p class="label" id="sessionStatus">
+          Starts spectrum recording, packet capture, AP discovery, and Quick
+          Network Discovery together.
+        </p>
+      </section>
       <section class="channels">
         <p class="section-title">SPECTRUM ANALYSIS</p>
         <div class="control-row" id="toolbar">
@@ -681,10 +724,29 @@
                 match = h.wireless_match
                   ? `Wireless match: ${h.wireless_match.ssid || h.wireless_match.bssid}${h.wireless_match.rssi == null ? "" : " · " + h.wireless_match.rssi + " dBm"}`
                   : "";
-              return `<div class="channel network-host"><span>${esc(h.ip || "")}</span><b>${esc(name)}</b><small>${esc([h.mac, h.vendor, os].filter(Boolean).join(" · "))}</small>${ports ? `<div class="ports">${ports}</div>` : ""}${match ? `<small class="match">${esc(match)}</small>` : ""}</div>`;
+              return `<div class="channel network-host"><span>${esc(h.ip || "")}</span><b>${esc(name)}</b><small>${esc([h.mac, h.vendor, os].filter(Boolean).join(" · "))}</small>${ports ? `<div class="ports">${ports}</div>` : ""}${match ? `<small class="match">${esc(match)}</small>` : ""}${h.ip ? `<button class="deep-dive" data-deep-ip="${esc(h.ip)}">Deep Dive</button>` : ""}</div>`;
             })
             .join("") ||
           '<span class="label">No responding hosts in the latest scan.</span>';
+        document.querySelectorAll(".deep-dive").forEach((button) => {
+          button.onclick = () => runDeepDive(button.dataset.deepIp);
+        });
+      }
+      async function runDeepDive(ip) {
+        try {
+          netProfile.value = "deep_host";
+          netTarget.value = ip;
+          updateNetDescription();
+          let response = await fetch("/api/nmap/run", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ profile: "deep_host", target: ip }),
+            }),
+            body = await response.json();
+          if (!response.ok) throw Error(body.error || response.statusText);
+        } catch (error) {
+          alert(error.message);
+        }
       }
       async function pollNetwork() {
         try {
@@ -757,6 +819,71 @@
         }
       };
       pollNetwork();
+      const sessionStart = document.querySelector("#sessionStart"),
+        sessionStop = document.querySelector("#sessionStop"),
+        investigationPanel = document.querySelector("#investigationPanel");
+      async function sessionAction(action) {
+        let options = { method: "POST" };
+        if (action === "start") {
+          options.headers = { "Content-Type": "application/json" };
+          options.body = JSON.stringify({ target: netTarget.value });
+        }
+        let response = await fetch(`/api/investigation/${action}`, options),
+          body = await response.json();
+        if (!response.ok) throw Error(body.error || response.statusText);
+        return body;
+      }
+      sessionStart.onclick = async () => {
+        try {
+          await sessionAction("start");
+        } catch (error) {
+          alert(error.message);
+        }
+      };
+      sessionStop.onclick = async () => {
+        try {
+          await sessionAction("stop");
+        } catch (error) {
+          alert(error.message);
+        }
+      };
+      async function pollInvestigation() {
+        try {
+          let data = await (await fetch("/api/investigation/state")).json(),
+            session = data.session,
+            active = data.active;
+          investigationPanel.classList.toggle("session-active", active);
+          sessionStart.disabled = active;
+          sessionStop.disabled = !active;
+          document.querySelector("#record").disabled = active;
+          document.querySelector("#capRecord").disabled = active;
+          document.querySelector("#sessionState").textContent = active
+            ? "Active"
+            : session
+              ? "Complete"
+              : "Ready";
+          document.querySelector("#sessionAps").textContent =
+            session?.ap_discovery?.count || 0;
+          document.querySelector("#sessionHosts").textContent =
+            session?.network_scan?.host_count || 0;
+          let status = document.querySelector("#sessionStatus");
+          if (!session) {
+            status.textContent =
+              "Starts spectrum recording, packet capture, AP discovery, and Quick Network Discovery together.";
+          } else {
+            let networkStatus = session.network_scan?.status || "pending",
+              apStatus = session.ap_discovery?.status || "pending";
+            status.textContent = `${session.id} · ${session.target} · AP discovery ${apStatus} · network discovery ${networkStatus}${session.errors?.length ? " · " + session.errors.join(" · ") : ""}`;
+            status.className = session.errors?.length ? "label error" : "label";
+          }
+        } catch (error) {
+          document.querySelector("#sessionStatus").textContent =
+            "INVESTIGATION API OFFLINE";
+          document.querySelector("#sessionStatus").className = "label error";
+        }
+        setTimeout(pollInvestigation, 1000);
+      }
+      pollInvestigation();
     </script>
   </body>
 </html>

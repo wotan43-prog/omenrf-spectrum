@@ -11,6 +11,8 @@ Local spectrum and 802.11 packet-analysis dashboard for the MetaGeek Wi-Spy DBx3
 - Constrained Nmap discovery with fixed quick, inventory, service, and single-host profiles
 - Live target validation against WOPR-II's directly connected RFC1918 routes
 - Structured JSON scan recordings with exact-MAC correlation to observed wireless devices
+- Unified investigation sessions that coordinate spectrum, PCAP, AP, and Nmap collection
+- One-click single-host Deep Dive actions from discovered-host cards
 
 ## Install on WOPR-II
 
@@ -42,6 +44,16 @@ The POST body is JSON:
 ```
 
 Valid profiles are `quick`, `inventory`, `services`, and `deep_host`. Deep-host scans accept exactly one IPv4 address. Completed results are saved under `recordings/nmap-*.json`.
+
+## Investigation-session API
+
+```text
+GET  /api/investigation/state
+POST /api/investigation/start
+POST /api/investigation/stop
+```
+
+Starting a session requires a JSON body containing a connected private target, for example `{"target":"192.168.1.0/24"}`. It creates `recordings/investigations/<session-id>/`, begins spectrum and PCAP recording, starts AP discovery, launches the fixed Quick Discovery profile, and maintains `manifest.json`. Manual spectrum and PCAP controls are locked while the session owns those recorders.
 
 ## Service commands
 

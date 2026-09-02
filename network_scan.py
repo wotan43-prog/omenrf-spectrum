@@ -162,19 +162,22 @@ class NetworkScanner:
             routes = []
             route_error = str(exc)
         with self.lock:
+            running = {
+                key: value for key, value in (self.running or {}).items() if not key.startswith("_")
+            } or None
             return {
                 "profiles": [
                     {"id": key, "name": value["name"], "description": value["description"], "max_hosts": value["max_hosts"]}
                     for key, value in PROFILES.items()
                 ],
                 "allowed_targets": routes,
-                "running": self.running,
+                "running": running,
                 "last_result": self.last_result,
                 "history": self.history[-10:],
                 "error": self.error or route_error,
             }
 
-    def start(self, profile_id, target_value):
+    def start(self, profile_id, target_value, output_dir=None, session_id=None):
         if profile_id not in PROFILES:
             raise ValueError("unknown scan profile")
         profile = PROFILES[profile_id]
@@ -191,11 +194,13 @@ class NetworkScanner:
                 "profile_name": profile["name"],
                 "target": target,
                 "started_at": time.time(),
+                "session_id": session_id,
+                "_output_dir": str(output_dir) if output_dir else None,
             }
             self.running = job
             self.error = None
         threading.Thread(target=self._run, args=(job, profile), daemon=True).start()
-        return job
+        return {key: value for key, value in job.items() if not key.startswith("_")}
 
     def _run(self, job, profile):
         command = ["nmap", *profile["args"], "-oX", "-", job["target"]]
@@ -224,16 +229,19 @@ class NetworkScanner:
                     "rssi": match.get("rssi"),
                     "roles": match.get("roles", []),
                 } if match else None
+            public_job = {key: value for key, value in job.items() if not key.startswith("_")}
             completed = {
-                **job,
+                **public_job,
                 "finished_at": time.time(),
                 "status": "complete",
                 "host_count": len(parsed["hosts"]),
                 **parsed,
             }
-            output_path = self.root / "recordings" / f"{job['id']}.json"
+            output_dir = Path(job["_output_dir"]) if job.get("_output_dir") else self.root / "recordings"
+            output_dir.mkdir(parents=True, exist_ok=True)
+            output_path = output_dir / f"{job['id']}.json"
+            completed["recording"] = str(output_path.relative_to(self.root / "recordings"))
             output_path.write_text(json.dumps(completed, indent=2) + "\n")
-            completed["recording"] = output_path.name
             with self.lock:
                 self.last_result = completed
                 self.history.append({key: completed.get(key) for key in ("id", "profile", "profile_name", "target", "started_at", "finished_at", "host_count", "recording")})
@@ -241,7 +249,8 @@ class NetworkScanner:
         except Exception as exc:
             with self.lock:
                 self.error = str(exc)
-                self.last_result = {**job, "finished_at": time.time(), "status": "error", "error": str(exc)}
+                public_job = {key: value for key, value in job.items() if not key.startswith("_")}
+                self.last_result = {**public_job, "finished_at": time.time(), "status": "error", "error": str(exc)}
         finally:
             with self.lock:
                 self.running = None
