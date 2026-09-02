@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
-import json, os, re, signal, subprocess, threading, time
+import json, os, re, shutil, signal, subprocess, threading, time
 from collections import deque
 from http.server import ThreadingHTTPServer, SimpleHTTPRequestHandler
 from pathlib import Path
-from urllib.parse import urlparse
+from urllib.parse import parse_qs, urlparse
 from capture import PacketRadio
 from investigation import InvestigationManager
 from network_scan import NetworkScanner
@@ -15,6 +15,13 @@ history=deque(maxlen=600); lock=threading.Lock(); proc=None
 radio=None
 network_scanner=None
 investigation=None
+
+def resolve_pcap_recording(base, relative):
+    base=Path(base).resolve()
+    try: target=(base/relative).resolve(); target.relative_to(base)
+    except (OSError,ValueError): raise FileNotFoundError('recording not found')
+    if target.suffix.lower()!='.pcap' or not target.is_file(): raise FileNotFoundError('recording not found')
+    return target
 
 def start_spectrum_recording(path):
     with lock:
@@ -74,11 +81,26 @@ class Handler(SimpleHTTPRequestHandler):
         if length<1 or length>4096: raise ValueError('JSON body must be between 1 and 4096 bytes')
         try: return json.loads(self.rfile.read(length))
         except json.JSONDecodeError as e: raise ValueError('invalid JSON body') from e
+    def recording_download(self, relative):
+        base=(ROOT/'recordings').resolve()
+        try: target=resolve_pcap_recording(base,relative)
+        except FileNotFoundError: return self.json({'error':'not found'},404)
+        self.send_response(200); self.send_header('Content-Type','application/vnd.tcpdump.pcap')
+        self.send_header('Content-Disposition',f'attachment; filename="{target.name}"')
+        self.send_header('Content-Length',str(target.stat().st_size)); self.end_headers()
+        with target.open('rb') as source: shutil.copyfileobj(source,self.wfile)
     def do_GET(self):
-        p=urlparse(self.path).path
+        parsed=urlparse(self.path); p=parsed.path; query=parse_qs(parsed.query)
         if p=='/api/state':
             with lock: self.json({'band':state['band'],'recording':state['recording'],'ranges':state['ranges'],'latest':state['latest'],'error':state['error']}); return
         if p=='/api/capture/state': self.json(radio.state()); return
+        if p=='/api/capture/frames':
+            try: self.json(radio.frame_snapshot(query.get('after',['0'])[0],query.get('limit',['100'])[0],query.get('type',[''])[0],query.get('mac',[''])[0]))
+            except (TypeError,ValueError) as e: self.json({'error':str(e)},400)
+            return
+        if p=='/api/capture/devices': self.json({'devices':radio.device_snapshot()}); return
+        if p=='/api/capture/files': self.json({'files':radio.recording_files()}); return
+        if p=='/api/capture/download': return self.recording_download(query.get('path',[''])[0])
         if p=='/api/nmap/state': self.json(network_scanner.state()); return
         if p=='/api/investigation/state': self.json(investigation.state()); return
         if p.startswith('/api/recordings/'):

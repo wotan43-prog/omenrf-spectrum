@@ -8,6 +8,7 @@ Local spectrum and 802.11 packet-analysis dashboard for the MetaGeek Wi-Spy DBx3
 - Monitor-radio channel and 20/40/80 MHz width control
 - Live frame rate, frame-type counts, RSSI, and observed APs
 - PCAP recording and local AP discovery using a second Wi-Fi interface
+- Slide-out packet inspector with bounded live header metadata, device inventory, and PCAP downloads
 - Constrained Nmap discovery with fixed quick, inventory, service, and single-host profiles
 - Live target validation against WOPR-II's directly connected RFC1918 routes
 - Structured JSON scan recordings with exact-MAC correlation to observed wireless devices
@@ -29,6 +30,17 @@ Open `http://WOPR-II-IP:8765`. Spectrum JSONL, packet PCAP, and network-scan JSO
 Defaults are `wlan1` for packet capture and `wlan0` for discovery. Override them in the systemd environment with `CAPTURE_INTERFACE` and `SCAN_INTERFACE`.
 
 Nmap targets are never accepted as command-line arguments. The API accepts only a profile ID and an IPv4 address or CIDR, validates the target against live directly connected private routes, and launches a fixed argument list without a shell. Set the optional comma-separated `NMAP_INTERFACES` environment variable to restrict eligible routes further, for example `NMAP_INTERFACES=eth0,wlan0`.
+
+## Packet-inspector API
+
+```text
+GET /api/capture/frames?after=0&limit=100&type=beacon&mac=00:11:22:33:44:55
+GET /api/capture/devices
+GET /api/capture/files
+GET /api/capture/download?path=wifi-example.pcap
+```
+
+The live inspector keeps only the latest 1,000 structured 802.11 header summaries in memory and returns at most 200 at a time. It never returns raw payload text. Downloads are restricted to `.pcap` files located beneath `recordings/`, including investigation-session subdirectories.
 
 ## Network-scan API
 

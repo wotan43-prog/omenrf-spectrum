@@ -163,6 +163,108 @@
         padding: 5px 9px;
         font-size: 11px;
       }
+      .inspectable {
+        cursor: pointer;
+      }
+      .inspectable:hover {
+        border-color: var(--green);
+      }
+      .drawer-backdrop {
+        position: fixed;
+        inset: 0;
+        background: #0008;
+        opacity: 0;
+        pointer-events: none;
+        transition: opacity 160ms ease;
+        z-index: 20;
+      }
+      .drawer-backdrop.open {
+        opacity: 1;
+        pointer-events: auto;
+      }
+      .capture-drawer {
+        position: fixed;
+        top: 0;
+        right: 0;
+        width: min(720px, 94vw);
+        height: 100vh;
+        padding: 18px;
+        background: #0d1316;
+        border-left: 1px solid #35464d;
+        box-shadow: -16px 0 40px #0009;
+        transform: translateX(102%);
+        transition: transform 180ms ease;
+        z-index: 21;
+        overflow: auto;
+      }
+      .capture-drawer.open {
+        transform: translateX(0);
+      }
+      .drawer-header,
+      .drawer-tabs,
+      .drawer-filters {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        flex-wrap: wrap;
+      }
+      .drawer-header {
+        justify-content: space-between;
+        margin-bottom: 12px;
+      }
+      .drawer-header h2 {
+        margin: 0;
+        font-size: 17px;
+        letter-spacing: 0.08em;
+      }
+      .drawer-tabs {
+        border-bottom: 1px solid var(--grid);
+        padding-bottom: 10px;
+        margin-bottom: 12px;
+      }
+      .drawer-view[hidden] {
+        display: none;
+      }
+      .drawer-filters {
+        margin-bottom: 10px;
+      }
+      .drawer-filters input {
+        flex: 1;
+      }
+      .drawer-table {
+        width: 100%;
+        border-collapse: collapse;
+        font-size: 12px;
+      }
+      .drawer-table th,
+      .drawer-table td {
+        padding: 8px 6px;
+        border-bottom: 1px solid var(--grid);
+        text-align: left;
+        vertical-align: top;
+      }
+      .drawer-table th {
+        color: var(--muted);
+        position: sticky;
+        top: 0;
+        background: #0d1316;
+      }
+      .drawer-table code {
+        color: var(--green);
+        font-size: 11px;
+      }
+      .file-row {
+        display: grid;
+        grid-template-columns: 1fr auto;
+        gap: 6px 12px;
+        padding: 10px;
+        margin-bottom: 8px;
+        border: 1px solid var(--grid);
+        border-radius: 8px;
+      }
+      .file-row small {
+        color: var(--muted);
+      }
       .metrics {
         display: flex;
         gap: 24px;
@@ -249,7 +351,7 @@
     <header>
       <h1>
         <span class="omen">OMEN</span>RF / SPECTRUM + PACKETS
-        <small>v0.7</small>
+        <small>v0.8</small>
       </h1>
       <div class="status" id="status">Connecting…</div>
     </header>
@@ -323,6 +425,7 @@
             <div class="control-actions">
               <button id="capScan" class="primary">Scan for APs</button>
               <button id="capRecord">Start Packet Capture</button>
+              <button id="capInspect">Inspect Packets</button>
             </div>
           </div>
           <div class="metrics">
@@ -384,6 +487,68 @@
         <canvas id="water"></canvas>
       </section>
     </main>
+    <div class="drawer-backdrop" id="drawerBackdrop"></div>
+    <aside
+      class="capture-drawer"
+      id="captureDrawer"
+      aria-hidden="true"
+      aria-label="Packet capture inspector"
+    >
+      <div class="drawer-header">
+        <h2>PACKET CAPTURE INSPECTOR</h2>
+        <button id="drawerClose" aria-label="Close packet inspector">
+          Close
+        </button>
+      </div>
+      <div class="drawer-tabs">
+        <button class="drawer-tab active" data-drawer-view="frames">
+          Live Frames
+        </button>
+        <button class="drawer-tab" data-drawer-view="devices">Devices</button>
+        <button class="drawer-tab" data-drawer-view="files">PCAP Files</button>
+      </div>
+      <section class="drawer-view" id="drawerFrames">
+        <div class="drawer-filters">
+          <select id="frameFilter" aria-label="Frame type filter">
+            <option value="">All frame types</option>
+          </select>
+          <input id="frameMac" placeholder="Exact MAC address (optional)" />
+          <button id="frameClear">Clear</button>
+        </div>
+        <p class="label" id="frameStatus">Waiting for frame metadata…</p>
+        <table class="drawer-table">
+          <thead>
+            <tr>
+              <th>Time</th>
+              <th>Type</th>
+              <th>Source → Destination</th>
+              <th>Radio</th>
+            </tr>
+          </thead>
+          <tbody id="frameRows"></tbody>
+        </table>
+      </section>
+      <section class="drawer-view" id="drawerDevices" hidden>
+        <p class="label">Observed 802.11 identities; newest activity first.</p>
+        <table class="drawer-table">
+          <thead>
+            <tr>
+              <th>Device</th>
+              <th>Roles</th>
+              <th>Frames</th>
+              <th>Signal</th>
+            </tr>
+          </thead>
+          <tbody id="deviceRows"></tbody>
+        </table>
+      </section>
+      <section class="drawer-view" id="drawerFiles" hidden>
+        <p class="label">
+          Full packet bytes remain in these downloadable PCAP files.
+        </p>
+        <div id="captureFiles"></div>
+      </section>
+    </aside>
     <script>
       const T = document.querySelector("#trace"),
         W = document.querySelector("#water"),
@@ -598,13 +763,125 @@
           "Move cursor over trace");
       const capCh = document.querySelector("#capChannel");
       const capWidth = document.querySelector("#capWidth");
+      const captureDrawer = document.querySelector("#captureDrawer");
+      const drawerBackdrop = document.querySelector("#drawerBackdrop");
+      const frameFilter = document.querySelector("#frameFilter");
+      const frameMac = document.querySelector("#frameMac");
       let captureSelectionDirty = false;
+      let drawerOpen = false,
+        drawerView = "frames",
+        frameCursor = 0,
+        frameRows = [],
+        frameQueryKey = "";
       [
         1, 6, 11, 36, 40, 44, 48, 52, 56, 60, 64, 100, 104, 108, 112, 116, 120,
         124, 128, 132, 136, 140, 144, 149, 153, 157, 161, 165,
       ].forEach((ch) => capCh.add(new Option("Channel " + ch, ch)));
       capCh.onchange = () => (captureSelectionDirty = true);
       capWidth.onchange = () => (captureSelectionDirty = true);
+      function setDrawerView(view) {
+        drawerView = view;
+        document
+          .querySelectorAll(".drawer-tab")
+          .forEach((button) =>
+            button.classList.toggle(
+              "active",
+              button.dataset.drawerView === view,
+            ),
+          );
+        for (let name of ["Frames", "Devices", "Files"])
+          document.querySelector("#drawer" + name).hidden =
+            name.toLowerCase() !== view;
+        refreshDrawer();
+      }
+      function openCaptureDrawer(view = "frames", kind = "", mac = "") {
+        drawerOpen = true;
+        captureDrawer.classList.add("open");
+        drawerBackdrop.classList.add("open");
+        captureDrawer.setAttribute("aria-hidden", "false");
+        if (kind !== frameFilter.value || mac !== frameMac.value) {
+          frameFilter.value = kind;
+          frameMac.value = mac;
+          frameQueryKey = "";
+        }
+        setDrawerView(view);
+      }
+      function closeCaptureDrawer() {
+        drawerOpen = false;
+        captureDrawer.classList.remove("open");
+        drawerBackdrop.classList.remove("open");
+        captureDrawer.setAttribute("aria-hidden", "true");
+      }
+      function renderFrames() {
+        document.querySelector("#frameRows").innerHTML = [...frameRows]
+          .reverse()
+          .map((frame) => {
+            let addresses = `${esc(frame.source || "—")} → ${esc(frame.destination || "—")}`,
+              identity = [frame.ssid, frame.bssid].filter(Boolean).join(" · "),
+              radio = [
+                frame.rssi == null ? "" : frame.rssi + " dBm",
+                frame.frequency_mhz
+                  ? frame.frequency_mhz + " MHz"
+                  : "ch " + frame.channel,
+                frame.length == null ? "" : frame.length + " B",
+              ]
+                .filter(Boolean)
+                .join(" · ");
+            return `<tr><td>${esc(new Date(frame.ts * 1000).toLocaleTimeString())}</td><td>${esc(frame.type.replaceAll("_", " "))}</td><td><code>${addresses}</code>${identity ? `<br><small>${esc(identity)}</small>` : ""}</td><td>${esc(radio)}</td></tr>`;
+          })
+          .join("");
+        document.querySelector("#frameStatus").textContent =
+          `${frameRows.length} recent header summaries · payload contents are not retained here`;
+      }
+      async function loadFrames() {
+        let key = frameFilter.value + "|" + frameMac.value.trim().toLowerCase();
+        if (key !== frameQueryKey) {
+          frameQueryKey = key;
+          frameCursor = 0;
+          frameRows = [];
+        }
+        let query = new URLSearchParams({
+            after: frameCursor,
+            limit: 100,
+            type: frameFilter.value,
+            mac: frameMac.value.trim(),
+          }),
+          response = await fetch("/api/capture/frames?" + query),
+          data = await response.json();
+        if (!response.ok) throw Error(data.error || response.statusText);
+        frameRows = frameRows.concat(data.frames || []).slice(-200);
+        frameCursor = data.next_cursor || frameCursor;
+        renderFrames();
+      }
+      async function loadDevices() {
+        let data = await (await fetch("/api/capture/devices")).json();
+        document.querySelector("#deviceRows").innerHTML = (data.devices || [])
+          .map(
+            (device) =>
+              `<tr><td><code>${esc(device.mac)}</code>${device.ssid ? `<br><small>${esc(device.ssid)}</small>` : ""}</td><td>${esc((device.roles || []).join(", "))}</td><td>${esc(device.frames || 0)}</td><td>${device.rssi == null ? "—" : esc(device.rssi + " dBm")}</td></tr>`,
+          )
+          .join("");
+      }
+      async function loadCaptureFiles() {
+        let data = await (await fetch("/api/capture/files")).json();
+        document.querySelector("#captureFiles").innerHTML =
+          (data.files || [])
+            .map(
+              (file) =>
+                `<div class="file-row"><div><code>${esc(file.path)}</code><br><small>${esc(new Date(file.modified_at * 1000).toLocaleString())} · ${esc((file.size / 1048576).toFixed(2))} MB${file.active ? " · recording" : ""}</small></div><a href="/api/capture/download?path=${encodeURIComponent(file.path)}"><button>Download</button></a></div>`,
+            )
+            .join("") || '<p class="label">No PCAP files recorded yet.</p>';
+      }
+      async function refreshDrawer() {
+        if (!drawerOpen) return;
+        try {
+          if (drawerView === "frames") await loadFrames();
+          else if (drawerView === "devices") await loadDevices();
+          else await loadCaptureFiles();
+        } catch (error) {
+          document.querySelector("#frameStatus").textContent = error.message;
+        }
+      }
       async function pollCapture() {
         try {
           let x = await (await fetch("/api/capture/state")).json();
@@ -635,16 +912,36 @@
             .slice(0, 8)
             .map(
               ([k, v]) =>
-                `<div class="channel"><span>${k.replaceAll("_", " ")}</span><b>${v}</b></div>`,
+                `<div class="channel inspectable" data-frame-type="${esc(k)}"><span>${esc(k.replaceAll("_", " "))}</span><b>${v}</b></div>`,
             )
             .join("");
+          if (frameFilter.options.length === 1)
+            Object.keys(x.types)
+              .sort()
+              .forEach((kind) =>
+                frameFilter.add(new Option(kind.replaceAll("_", " "), kind)),
+              );
+          document
+            .querySelectorAll("#frameTypes [data-frame-type]")
+            .forEach(
+              (tile) =>
+                (tile.onclick = () =>
+                  openCaptureDrawer("frames", tile.dataset.frameType)),
+            );
           document.querySelector("#apTable").innerHTML = x.aps
             .slice(0, 8)
             .map(
               (a) =>
-                `<div class="channel"><span>${a.ssid || a.bssid}</span><b>${a.rssi == null ? "" : a.rssi + " dBm"}</b><small>${a.frames} frames</small></div>`,
+                `<div class="channel inspectable" data-frame-mac="${esc(a.bssid)}"><span>${esc(a.ssid || a.bssid)}</span><b>${a.rssi == null ? "" : a.rssi + " dBm"}</b><small>${a.frames} frames</small></div>`,
             )
             .join("");
+          document
+            .querySelectorAll("#apTable [data-frame-mac]")
+            .forEach(
+              (tile) =>
+                (tile.onclick = () =>
+                  openCaptureDrawer("frames", "", tile.dataset.frameMac)),
+            );
         } catch (e) {
           document.querySelector("#capStatus").textContent =
             "PACKET API OFFLINE";
@@ -665,6 +962,34 @@
       };
       document.querySelector("#capRecord").onclick = () =>
         post("/api/capture/record");
+      document.querySelector("#capInspect").onclick = () =>
+        openCaptureDrawer("frames");
+      document.querySelector("#drawerClose").onclick = closeCaptureDrawer;
+      drawerBackdrop.onclick = closeCaptureDrawer;
+      document.onkeydown = (event) => {
+        if (event.key === "Escape") closeCaptureDrawer();
+      };
+      document
+        .querySelectorAll(".drawer-tab")
+        .forEach(
+          (button) =>
+            (button.onclick = () => setDrawerView(button.dataset.drawerView)),
+        );
+      frameFilter.onchange = () => {
+        frameQueryKey = "";
+        refreshDrawer();
+      };
+      frameMac.onchange = () => {
+        frameQueryKey = "";
+        refreshDrawer();
+      };
+      document.querySelector("#frameClear").onclick = () => {
+        frameFilter.value = "";
+        frameMac.value = "";
+        frameQueryKey = "";
+        refreshDrawer();
+      };
+      setInterval(refreshDrawer, 1000);
       document.querySelector("#capScan").onclick = async () => {
         try {
           let x = await post("/api/capture/scan");

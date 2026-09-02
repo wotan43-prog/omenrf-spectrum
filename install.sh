@@ -1,6 +1,9 @@
 #!/bin/sh
 set -eu
 HERE=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
+SERVICE_USER=${SUDO_USER:-$(id -un)}
+SERVICE_HOME=$(getent passwd "$SERVICE_USER" | cut -d: -f6)
+[ -n "$SERVICE_HOME" ] || { echo "Could not determine home directory for $SERVICE_USER" >&2; exit 1; }
 sudo apt-get update
 sudo apt-get install -y tcpdump iw nmap
 chmod +x "$HERE/server.py"
@@ -10,9 +13,9 @@ Description=OmenRF Wi-Spy DBx3 Spectrum Service
 After=network.target
 [Service]
 Type=simple
-User=$USER
+User=$SERVICE_USER
 WorkingDirectory=$HERE
-Environment=SPECTOOL_RAW=$HOME/spectools/spectool_raw
+Environment=SPECTOOL_RAW=$SERVICE_HOME/spectools/spectool_raw
 ExecStart=/usr/bin/python3 $HERE/server.py
 Restart=on-failure
 RestartSec=2
