@@ -23,5 +23,6 @@ NoNewPrivileges=true
 WantedBy=multi-user.target
 EOF
 sudo systemctl daemon-reload
-sudo systemctl enable --now omenrf-spectrum
+sudo systemctl enable omenrf-spectrum
+sudo systemctl restart omenrf-spectrum
 echo "Open http://$(hostname -I | awk '{print $1}'):8765"
