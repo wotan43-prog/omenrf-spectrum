@@ -89,7 +89,7 @@ class PacketRadio:
                 s=line.strip()
                 if s.startswith('SSID:'): cur['ssid']=s[5:].strip()
                 elif s.startswith('signal:'): cur['signal']=float(s.split()[1])
-                elif s.startswith('freq:'): cur['freq']=int(s.split()[1])
+                elif s.startswith('freq:'): cur['freq']=int(float(s.split()[1]))
         if cur: found.append(cur)
         self.discovery=sorted(found,key=lambda x:x['signal'] or -999,reverse=True)
         return self.discovery
