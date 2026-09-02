@@ -47,10 +47,10 @@ class PacketRadio:
     def __init__(self, root: Path):
         self.root=root; self.iface=os.environ.get('CAPTURE_INTERFACE','wlan1')
         self.scan_iface=os.environ.get('SCAN_INTERFACE','wlan0')
-        self.lock=threading.Lock(); self.running=True; self.proc=None; self.record_proc=None
+        self.lock=threading.Lock(); self.scan_lock=threading.Lock(); self.running=True; self.proc=None; self.record_proc=None
         self.times=deque(maxlen=10000); self.frames=deque(maxlen=1000); self.frame_id=0
         self.types=Counter(); self.total=0; self.channel=6; self.width=20
-        self.last_rssi=None; self.error=None; self.aps={}; self.devices={}; self.discovery=[]; self.recording=None
+        self.last_rssi=None; self.error=None; self.aps={}; self.devices={}; self.discovery=[]; self.scan_error=None; self.scan_time=None; self.recording=None
         self.recording_path=None; self.recording_started=None
         threading.Thread(target=self._worker,daemon=True).start()
 
@@ -94,9 +94,10 @@ class PacketRadio:
         with self.lock:
             while self.times and self.times[0] < now-10: self.times.popleft()
             fps=sum(t>=now-1 for t in self.times)
-            return {'interface':self.iface,'channel':self.channel,'width':self.width,'fps':fps,'total':self.total,
+            return {'interface':self.iface,'scan_interface':self.scan_iface,'channel':self.channel,'width':self.width,'fps':fps,'total':self.total,
                     'types':dict(self.types),'rssi':self.last_rssi,'error':self.error,'recording':self.recording,
-                    'aps':sorted(self.aps.values(),key=lambda x:x['frames'],reverse=True)[:20],'discovery':self.discovery[:30]}
+                    'aps':sorted(self.aps.values(),key=lambda x:x['frames'],reverse=True)[:20],
+                    'discovery':self.discovery[:30],'scan_error':self.scan_error,'scan_time':self.scan_time}
 
     def wireless_snapshot(self):
         with self.lock:
@@ -178,18 +179,27 @@ class PacketRadio:
         self.record_proc=None; self.recording=None; self.recording_path=None; self.recording_started=None
 
     def scan(self):
-        out=subprocess.run(['iw','dev',self.scan_iface,'scan'],capture_output=True,text=True,timeout=20,check=True).stdout
-        found=[]; cur=None
-        for line in out.splitlines():
-            m=re.match(r'BSS ([0-9a-f:]{17})',line.strip(),re.I)
-            if m:
-                if cur: found.append(cur)
-                cur={'bssid':m.group(1).lower(),'ssid':'','signal':None,'freq':None}
-            elif cur:
-                s=line.strip()
-                if s.startswith('SSID:'): cur['ssid']=s[5:].strip()
-                elif s.startswith('signal:'): cur['signal']=float(s.split()[1])
-                elif s.startswith('freq:'): cur['freq']=int(float(s.split()[1]))
-        if cur: found.append(cur)
-        self.discovery=sorted(found,key=lambda x:x['signal'] or -999,reverse=True)
-        return self.discovery
+        if not self.scan_lock.acquire(blocking=False): raise RuntimeError('AP discovery is already running')
+        try:
+            out=subprocess.run(['iw','dev',self.scan_iface,'scan'],capture_output=True,text=True,timeout=20,check=True).stdout
+            found=[]; cur=None
+            for line in out.splitlines():
+                m=re.match(r'BSS ([0-9a-f:]{17})',line.strip(),re.I)
+                if m:
+                    if cur: found.append(cur)
+                    cur={'bssid':m.group(1).lower(),'ssid':'','signal':None,'freq':None}
+                elif cur:
+                    s=line.strip()
+                    if s.startswith('SSID:'): cur['ssid']=s[5:].strip()
+                    elif s.startswith('signal:'): cur['signal']=float(s.split()[1])
+                    elif s.startswith('freq:'): cur['freq']=int(float(s.split()[1]))
+            if cur: found.append(cur)
+            with self.lock:
+                self.discovery=sorted(found,key=lambda x:x['signal'] or -999,reverse=True)
+                self.scan_error=None; self.scan_time=time.time()
+                return list(self.discovery)
+        except Exception as exc:
+            with self.lock: self.scan_error=str(exc); self.scan_time=time.time()
+            raise
+        finally:
+            self.scan_lock.release()

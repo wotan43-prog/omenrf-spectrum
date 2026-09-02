@@ -144,7 +144,7 @@
         display: grid;
         grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
         gap: 14px;
-        align-items: start;
+        align-items: stretch;
       }
       .quadrant-grid > section {
         min-width: 0;
@@ -221,6 +221,52 @@
       }
       .inspectable:hover {
         border-color: var(--green);
+      }
+      .radio-role {
+        flex: 1 1 280px;
+        min-width: 0;
+        border-left: 3px solid #35464d;
+        padding-left: 10px;
+      }
+      .radio-role.packet-radio {
+        border-color: var(--green);
+      }
+      .radio-role.scan-radio {
+        border-color: var(--amber);
+      }
+      .observation-heading {
+        margin: 10px 0 6px;
+      }
+      .observation-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(145px, 1fr));
+      }
+      .observation-grid .channel {
+        min-width: 0;
+      }
+      .tile-head {
+        display: flex;
+        align-items: baseline;
+        justify-content: space-between;
+        gap: 8px;
+        min-width: 0;
+      }
+      .tile-head .tile-name {
+        min-width: 0;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+      .tile-head b {
+        float: none;
+        flex: 0 0 auto;
+      }
+      .tile-meta {
+        display: block;
+        margin-top: 5px;
+        color: var(--muted);
+        font-size: 10px;
+        overflow-wrap: anywhere;
       }
       .drawer-backdrop {
         position: fixed;
@@ -339,7 +385,47 @@
         cursor: crosshair;
       }
       #water {
-        height: 130px;
+        height: 100%;
+      }
+      .waterfall-card {
+        display: flex;
+        flex-direction: column;
+      }
+      .waterfall-plot {
+        flex: 1;
+        min-height: 205px;
+      }
+      .waterfall-scale {
+        position: relative;
+        height: 24px;
+        color: var(--muted);
+        font-size: 10px;
+      }
+      .waterfall-scale span {
+        position: absolute;
+        transform: translateX(-50%);
+        white-space: nowrap;
+      }
+      .signal-legend {
+        display: grid;
+        grid-template-columns: auto 1fr auto;
+        align-items: center;
+        gap: 8px;
+        margin-top: 4px;
+        color: var(--muted);
+        font-size: 10px;
+      }
+      .signal-gradient {
+        height: 7px;
+        border-radius: 4px;
+        background: linear-gradient(
+          90deg,
+          #06181f,
+          #007b8f,
+          #45e06f,
+          #ffe45c,
+          #ff352f
+        );
       }
       .label {
         color: var(--muted);
@@ -409,7 +495,7 @@
     <header>
       <h1>
         <span class="omen">OMEN</span>RF / SPECTRUM + PACKETS
-        <small>v0.9</small>
+        <small>v0.10</small>
       </h1>
       <div class="status" id="status">Connecting…</div>
     </header>
@@ -476,17 +562,30 @@
           </p>
           <div class="channel-grid" id="channelGrid"></div>
         </section>
-        <section class="card">
-          <p class="label">WATERFALL — NEWEST AT TOP</p>
-          <canvas id="water"></canvas>
+        <section class="card waterfall-card">
+          <p class="label">
+            WATERFALL — NEWEST AT TOP
+            <span id="waterCursor" style="float: right"
+              >Channel / signal scale</span
+            >
+          </p>
+          <div class="waterfall-plot"><canvas id="water"></canvas></div>
+          <div class="waterfall-scale" id="waterScale"></div>
+          <div class="signal-legend">
+            <span>−105 dBm</span>
+            <div class="signal-gradient"></div>
+            <span>−30 dBm</span>
+          </div>
         </section>
         <section class="channels">
           <p class="section-title">
-            WI-FI ANALYSIS — LINKSYS WUSB6300 V2 / WLAN1
+            WI-FI ANALYSIS — DUAL LINKSYS WUSB6300 V2 RADIOS
           </p>
           <div class="control-row">
-            <div class="control-group">
-              <span class="control-label">Monitor channel</span>
+            <div class="control-group radio-role packet-radio">
+              <span class="control-label" id="packetRadioLabel"
+                >Packet radio — monitor interface</span
+              >
               <div class="control-actions">
                 <select id="capChannel" aria-label="Monitor channel"></select>
                 <select id="capWidth" aria-label="Channel width">
@@ -495,15 +594,20 @@
                   <option value="80">80 MHz</option>
                 </select>
                 <button id="capTune">Apply Channel</button>
-              </div>
-            </div>
-            <div class="control-group">
-              <span class="control-label">Wireless actions</span>
-              <div class="control-actions">
-                <button id="capScan" class="primary">Scan for APs</button>
                 <button id="capRecord">Start Packet Capture</button>
                 <button id="capInspect">Inspect Packets</button>
               </div>
+            </div>
+            <div class="control-group radio-role scan-radio">
+              <span class="control-label" id="scanRadioLabel"
+                >Scan radio — discovery interface</span
+              >
+              <div class="control-actions">
+                <button id="capScan" class="primary">Scan for APs</button>
+              </div>
+              <span class="label" id="scanStatus"
+                >Ready for independent AP discovery</span
+              >
             </div>
             <div class="metrics">
               <div class="metric">Frames/sec<b id="capFps">0</b></div>
@@ -511,8 +615,18 @@
               <div class="metric">Last RSSI<b id="capRssi">—</b></div>
             </div>
           </div>
-          <div class="channel-grid" id="frameTypes"></div>
-          <div class="channel-grid" id="apTable"></div>
+          <p class="control-label observation-heading">
+            Packet frame breakdown
+          </p>
+          <div class="channel-grid observation-grid" id="frameTypes"></div>
+          <p class="control-label observation-heading">
+            Passive observations — packet radio
+          </p>
+          <div class="channel-grid observation-grid" id="apTable"></div>
+          <p class="control-label observation-heading">
+            Active discovery — scan radio
+          </p>
+          <div class="channel-grid observation-grid" id="scanTable"></div>
           <p class="label" id="capStatus">Capture starting…</p>
         </section>
         <section class="channels">
@@ -703,6 +817,7 @@
         fit(W);
         let v = s.values,
           w = T.clientWidth,
+          ww = W.clientWidth,
           h = T.clientHeight,
           pad = 28;
         if (s.band != lastBand) {
@@ -778,8 +893,18 @@
         wc.putImageData(img, 0, (devicePixelRatio || 1) * 2);
         v.forEach((x, i) => {
           wc.fillStyle = color(x);
-          wc.fillRect((i / v.length) * w, 0, w / v.length + 1, 2);
+          wc.fillRect((i / v.length) * ww, 0, ww / v.length + 1, 2);
         });
+        let scaleChannels = chans.filter(
+          (_, index) =>
+            chans.length <= 14 || index % 3 === 0 || index === chans.length - 1,
+        );
+        document.querySelector("#waterScale").innerHTML = scaleChannels
+          .map((ch) => {
+            let left = ((ch.c - s.start_mhz) / (s.end_mhz - s.start_mhz)) * 100;
+            return `<span style="left:${left}%">ch ${ch.n}</span>`;
+          })
+          .join("");
         let mx = Math.max(...v),
           sorted = [...v].sort((a, b) => a - b),
           nf = sorted[Math.floor(sorted.length * 0.25)];
@@ -862,6 +987,32 @@
       T.onmouseleave = () =>
         (document.querySelector("#cursor").textContent =
           "Move cursor over trace");
+      W.onmousemove = (event) => {
+        if (!lastSweep) return;
+        let bounds = W.getBoundingClientRect(),
+          position = Math.max(
+            0,
+            Math.min(1, (event.clientX - bounds.left) / bounds.width),
+          ),
+          index = Math.round(position * (lastSweep.values.length - 1)),
+          frequency =
+            lastSweep.start_mhz +
+            position * (lastSweep.end_mhz - lastSweep.start_mhz),
+          channels = wifiChannels(lastSweep),
+          nearest = channels.reduce(
+            (best, channel) =>
+              !best ||
+              Math.abs(channel.c - frequency) < Math.abs(best.c - frequency)
+                ? channel
+                : best,
+            null,
+          );
+        document.querySelector("#waterCursor").textContent =
+          `${nearest ? "ch " + nearest.n + " · " : ""}${frequency.toFixed(1)} MHz · ${lastSweep.values[index]} dBm latest`;
+      };
+      W.onmouseleave = () =>
+        (document.querySelector("#waterCursor").textContent =
+          "Channel / signal scale");
       const capCh = document.querySelector("#capChannel");
       const capWidth = document.querySelector("#capWidth");
       const captureDrawer = document.querySelector("#captureDrawer");
@@ -994,9 +1145,13 @@
             capCh.value = x.channel;
             capWidth.value = x.width;
           }
+          document.querySelector("#packetRadioLabel").textContent =
+            `Packet radio — ${x.interface}`;
+          document.querySelector("#scanRadioLabel").textContent =
+            `Scan radio — ${x.scan_interface}`;
           document.querySelector("#capStatus").textContent = x.error
             ? "CAPTURE ERROR: " + x.error
-            : `wlan1 • channel ${x.channel} • ${x.width} MHz${x.recording ? " • recording " + x.recording : ""}`;
+            : `${x.interface} • channel ${x.channel} • ${x.width} MHz${x.recording ? " • recording " + x.recording : ""}`;
           document.querySelector("#capStatus").className = x.error
             ? "label error"
             : "label";
@@ -1013,7 +1168,7 @@
             .slice(0, 8)
             .map(
               ([k, v]) =>
-                `<div class="channel inspectable" data-frame-type="${esc(k)}"><span>${esc(k.replaceAll("_", " "))}</span><b>${v}</b></div>`,
+                `<div class="channel inspectable" data-frame-type="${esc(k)}"><div class="tile-head"><span class="tile-name">${esc(k.replaceAll("_", " "))}</span><b>${v}</b></div></div>`,
             )
             .join("");
           if (frameFilter.options.length === 1)
@@ -1033,7 +1188,7 @@
             .slice(0, 8)
             .map(
               (a) =>
-                `<div class="channel inspectable" data-frame-mac="${esc(a.bssid)}"><span>${esc(a.ssid || a.bssid)}</span><b>${a.rssi == null ? "" : a.rssi + " dBm"}</b><small>${a.frames} frames</small></div>`,
+                `<div class="channel inspectable" data-frame-mac="${esc(a.bssid)}"><div class="tile-head"><span class="tile-name" title="${esc(a.ssid || a.bssid)}">${esc(a.ssid || "Hidden SSID")}</span><b>${a.rssi == null ? "—" : a.rssi + " dBm"}</b></div><small class="tile-meta">${esc(a.bssid)} · ${a.frames} frames</small></div>`,
             )
             .join("");
           document
@@ -1043,6 +1198,21 @@
                 (tile.onclick = () =>
                   openCaptureDrawer("frames", "", tile.dataset.frameMac)),
             );
+          document.querySelector("#scanTable").innerHTML = (x.discovery || [])
+            .slice(0, 12)
+            .map(
+              (a) =>
+                `<div class="channel"><div class="tile-head"><span class="tile-name" title="${esc(a.ssid || a.bssid)}">${esc(a.ssid || "Hidden SSID")}</span><b>${a.signal == null ? "—" : a.signal + " dBm"}</b></div><small class="tile-meta">${esc(a.bssid)} · ${a.freq || "—"} MHz</small></div>`,
+            )
+            .join("");
+          document.querySelector("#scanStatus").textContent = x.scan_error
+            ? `SCAN ERROR: ${x.scan_error}`
+            : x.scan_time
+              ? `${(x.discovery || []).length} APs found on ${x.scan_interface} · ${new Date(x.scan_time * 1000).toLocaleTimeString()}`
+              : `Ready for independent AP discovery on ${x.scan_interface}`;
+          document.querySelector("#scanStatus").className = x.scan_error
+            ? "label error"
+            : "label";
         } catch (e) {
           document.querySelector("#capStatus").textContent =
             "PACKET API OFFLINE";
@@ -1095,17 +1265,18 @@
       };
       setInterval(refreshDrawer, 1000);
       document.querySelector("#capScan").onclick = async () => {
+        let button = document.querySelector("#capScan");
         try {
-          let x = await post("/api/capture/scan");
-          document.querySelector("#apTable").innerHTML = x.results
-            .slice(0, 12)
-            .map(
-              (a) =>
-                `<div class="channel"><span>${a.ssid || a.bssid}</span><b>${a.signal} dBm</b><small>${a.freq} MHz</small></div>`,
-            )
-            .join("");
+          button.disabled = true;
+          button.textContent = "Scanning…";
+          document.querySelector("#scanStatus").textContent =
+            "Active discovery running on the scan radio…";
+          await post("/api/capture/scan");
         } catch (e) {
           alert(e.message);
+        } finally {
+          button.disabled = false;
+          button.textContent = "Scan for APs";
         }
       };
       poll();

@@ -15,6 +15,7 @@ Local spectrum and 802.11 packet-analysis dashboard for the MetaGeek Wi-Spy DBx3
 - Unified investigation sessions that coordinate spectrum, PCAP, AP, and Nmap collection
 - One-click single-host Deep Dive action for the selected IP address
 - Responsive two-column analysis layout with selectable host inventory and a dedicated Deep Dive drawer
+- Dual-radio workflow that identifies the monitor/packet interface separately from the active AP-scan interface
 
 ## Install on WOPR-II
 
@@ -29,6 +30,8 @@ chmod +x install.sh
 Open `http://WOPR-II-IP:8765`. Spectrum JSONL, packet PCAP, and network-scan JSON recordings are stored under `recordings/`.
 
 Defaults are `wlan1` for packet capture and `wlan0` for discovery. Override them in the systemd environment with `CAPTURE_INTERFACE` and `SCAN_INTERFACE`.
+
+On the dual-Linksys WOPR-II configuration, `CAPTURE_INTERFACE=mon0` continuously feeds packet metadata and PCAP recording while `SCAN_INTERFACE=wlan2` performs active AP discovery without retuning the packet radio or interrupting WOPR-II's primary network connection.
 
 Nmap targets are never accepted as command-line arguments. The API accepts only a profile ID and an IPv4 address or CIDR, validates the target against live directly connected private routes, and launches a fixed argument list without a shell. Set the optional comma-separated `NMAP_INTERFACES` environment variable to restrict eligible routes further, for example `NMAP_INTERFACES=eth0,wlan0`.
 

@@ -3,11 +3,33 @@ import threading
 import unittest
 from collections import deque
 from pathlib import Path
+from types import SimpleNamespace
+from unittest.mock import patch
 
 from capture import PacketRadio, parse_frame_metadata
 
 
 class CaptureMetadataTests(unittest.TestCase):
+    @patch("capture.subprocess.run")
+    def test_active_discovery_uses_scan_radio_and_persists_results(self, run):
+        run.return_value = SimpleNamespace(stdout="""BSS aa:bb:cc:dd:ee:ff(on wlan2)
+        freq: 5180
+        signal: -52.50 dBm
+        SSID: Omen Lab
+        """)
+        radio = PacketRadio.__new__(PacketRadio)
+        radio.scan_iface = "wlan2"
+        radio.scan_lock = threading.Lock()
+        radio.lock = threading.Lock()
+        radio.discovery = []
+        radio.scan_error = None
+        radio.scan_time = None
+        results = radio.scan()
+        self.assertEqual(run.call_args.args[0], ["iw", "dev", "wlan2", "scan"])
+        self.assertEqual(results[0]["ssid"], "Omen Lab")
+        self.assertEqual(results[0]["signal"], -52.5)
+        self.assertIsNotNone(radio.scan_time)
+
     def test_parses_header_metadata_without_raw_payload(self):
         line = (
             "2412 MHz -48dBm signal Beacon (Omen Lab) "
