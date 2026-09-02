@@ -1,6 +1,13 @@
 # OmenRF Spectrum
 
-Local dual-band spectrum dashboard for the MetaGeek Wi-Spy DBx3 using the GPL Spectools driver.
+Local spectrum and 802.11 packet-analysis dashboard for the MetaGeek Wi-Spy DBx3 and a Linux monitor-mode adapter.
+
+## V3 functions
+
+- Live DBx3 spectrum, average, peak hold, waterfall, and recordings
+- Monitor-radio channel and 20/40/80 MHz width control
+- Live frame rate, frame-type counts, RSSI, and observed APs
+- PCAP recording and local AP discovery using a second Wi-Fi interface
 
 ## Install on WOPR-II
 
@@ -13,6 +20,8 @@ chmod +x install.sh
 ```
 
 Open `http://WOPR-II-IP:8765`. Recordings are JSONL files under `recordings/`.
+
+Defaults are `wlan1` for packet capture and `wlan0` for discovery. Override them in the systemd environment with `CAPTURE_INTERFACE` and `SCAN_INTERFACE`.
 
 ## Service commands
 
