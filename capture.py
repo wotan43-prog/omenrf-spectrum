@@ -14,7 +14,7 @@ class PacketRadio:
         self.scan_iface=os.environ.get('SCAN_INTERFACE','wlan0')
         self.lock=threading.Lock(); self.running=True; self.proc=None; self.record_proc=None
         self.times=deque(maxlen=10000); self.types=Counter(); self.total=0; self.channel=6; self.width=20
-        self.last_rssi=None; self.error=None; self.aps={}; self.discovery=[]; self.recording=None
+        self.last_rssi=None; self.error=None; self.aps={}; self.devices={}; self.discovery=[]; self.recording=None
         threading.Thread(target=self._worker,daemon=True).start()
 
     def _kind(self,line):
@@ -31,10 +31,17 @@ class PacketRadio:
                 for line in self.proc.stdout:
                     now=time.time(); kind=self._kind(line)
                     rssi=re.search(r'(-\d+)dBm signal',line); bssid=re.search(r'BSSID:([0-9a-f:]{17})',line,re.I)
+                    mac_hits=re.findall(r'\b(RA|TA|SA|DA|BSSID):([0-9a-f:]{17})',line,re.I)
                     ssid=re.search(r'Beacon \((.*?)\)',line)
                     with self.lock:
                         self.times.append(now); self.types[kind]+=1; self.total+=1; self.error=None
                         if rssi: self.last_rssi=int(rssi.group(1))
+                        for role,mac_value in mac_hits:
+                            mac_value=mac_value.lower(); role=role.upper()
+                            device=self.devices.setdefault(mac_value,{'mac':mac_value,'frames':0,'rssi':None,'roles':[],'last_seen':now})
+                            device['frames']+=1; device['last_seen']=now
+                            if role not in device['roles']: device['roles'].append(role)
+                            if rssi: device['rssi']=int(rssi.group(1))
                         if bssid:
                             mac=bssid.group(1).lower(); ap=self.aps.setdefault(mac,{'bssid':mac,'ssid':'','frames':0,'rssi':None})
                             ap['frames']+=1
@@ -53,6 +60,15 @@ class PacketRadio:
             return {'interface':self.iface,'channel':self.channel,'width':self.width,'fps':fps,'total':self.total,
                     'types':dict(self.types),'rssi':self.last_rssi,'error':self.error,'recording':self.recording,
                     'aps':sorted(self.aps.values(),key=lambda x:x['frames'],reverse=True)[:20],'discovery':self.discovery[:30]}
+
+    def wireless_snapshot(self):
+        with self.lock:
+            devices={mac:{**device,'roles':list(device['roles'])} for mac,device in self.devices.items()}
+            for mac,ap in self.aps.items():
+                device=devices.setdefault(mac,{'mac':mac,'frames':0,'rssi':None,'roles':['BSSID'],'last_seen':None})
+                device['ssid']=ap.get('ssid'); device['bssid']=mac
+                if ap.get('rssi') is not None: device['rssi']=ap['rssi']
+            return list(devices.values())
 
     def tune(self,ch,width=20):
         ch=int(ch); width=int(width)

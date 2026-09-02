@@ -2,7 +2,7 @@
 set -eu
 HERE=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 sudo apt-get update
-sudo apt-get install -y tcpdump iw
+sudo apt-get install -y tcpdump iw nmap
 chmod +x "$HERE/server.py"
 sudo tee /etc/systemd/system/omenrf-spectrum.service >/dev/null <<EOF
 [Unit]
