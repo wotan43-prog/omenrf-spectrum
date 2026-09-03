@@ -1933,7 +1933,99 @@
           };
         }
 
-        if ([21, 23].includes(number)) {
+        if (protocol === "udp") {
+          const udp = {
+            53: {
+              level: "info",
+              title: "DNS service",
+              text: "DNS is responding over UDP. Expected on routers, resolvers, and DNS infrastructure."
+            },
+            67: {
+              level: "info",
+              title: "DHCP server service",
+              text: "A DHCP server endpoint is reachable. Confirm this is an authorized DHCP source for the local network."
+            },
+            68: {
+              level: "info",
+              title: "DHCP client service",
+              text: "DHCP client traffic may be present. This is commonly associated with address assignment."
+            },
+            69: {
+              level: "review",
+              title: "TFTP service",
+              text: "TFTP is reachable. It provides no native authentication or encryption and is commonly used for device provisioning."
+            },
+            123: {
+              level: "info",
+              title: "NTP service",
+              text: "Network Time Protocol is reachable. Expected on time servers, routers, and infrastructure devices."
+            },
+            137: {
+              level: "review",
+              title: "NetBIOS name service",
+              text: "NetBIOS name service is reachable. Review whether legacy Windows name discovery is still required."
+            },
+            161: {
+              level: "review",
+              title: "SNMP service",
+              text: "SNMP is reachable. Confirm community strings or SNMPv3 credentials and management access are appropriately restricted."
+            },
+            162: {
+              level: "review",
+              title: "SNMP trap service",
+              text: "An SNMP trap listener is reachable. Confirm the endpoint and permitted management sources are intentional."
+            },
+            500: {
+              level: "info",
+              title: "IKE / IPsec service",
+              text: "IKE is reachable and may indicate an IPsec VPN endpoint."
+            },
+            514: {
+              level: "review",
+              title: "Syslog service",
+              text: "A UDP syslog endpoint is reachable. Traditional UDP syslog is unauthenticated and unencrypted."
+            },
+            520: {
+              level: "review",
+              title: "RIP routing service",
+              text: "Routing Information Protocol is reachable. Confirm RIP is intentionally enabled on this network segment."
+            },
+            623: {
+              level: "review",
+              title: "IPMI management service",
+              text: "IPMI remote-management traffic is reachable. Management-plane exposure should normally be tightly restricted."
+            },
+            1900: {
+              level: "info",
+              title: "SSDP / UPnP discovery",
+              text: "SSDP is reachable and indicates UPnP-style service discovery on the local network."
+            },
+            4500: {
+              level: "info",
+              title: "IPsec NAT-T service",
+              text: "IPsec NAT Traversal is reachable and may indicate a VPN gateway or client endpoint."
+            },
+            5353: {
+              level: "info",
+              title: "mDNS service",
+              text: "Multicast DNS service discovery is present. Common for printers, Apple devices, IoT, and local service advertisement."
+            },
+            5683: {
+              level: "review",
+              title: "CoAP service",
+              text: "Constrained Application Protocol is reachable. Common in IoT environments; confirm exposure is expected."
+            }
+          }[number];
+
+          if (udp) {
+            level = udp.level;
+            title = udp.title;
+            text = udp.text;
+          } else {
+            title = `${number}/udp ${port.service || "service"}`;
+            text = "Confirmed open UDP service detected.";
+          }
+        } else if ([21, 23].includes(number)) {
           level = "review";
           title = number === 21 ? "FTP service exposed" : "Telnet service exposed";
           text =
