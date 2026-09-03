@@ -1,3 +1,21 @@
+# Python
 __pycache__/
-*.py[cod]
+*.pyc
+
+# OmenRF deployment / working backups
+.deploy-backup-*/
+*.backup-*
+*.v03-backup
+*.pre-*
+*.wopr-backup-*
+*.channel-detail-backup-*
+*.arp-backup-*
+
+# One-shot / deployment artifacts
+DEPLOYED_BY_WOPR.txt
+sitecustomize.py
+
+# Runtime captures / generated data
 recordings/
+*.pcap
+*.jsonl
