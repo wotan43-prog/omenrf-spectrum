@@ -37,11 +37,31 @@ PROFILES = {
         "max_hosts": 256,
     },
     "deep_host": {
-        "name": "Single-Host Deep Dive",
+        "name": "TCP Deep Dive",
         "description": "Detailed TCP service assessment with Nmap's safe scripts for one local host.",
         "args": ("-PR", "-sT", "-sV", "--script", "safe", "--top-ports", "1000", "-T3", "--max-retries", "2", "--host-timeout", "120s"),
         "timeout": 180,
         "max_hosts": 1,
+    },
+    "udp_host": {
+        "name": "UDP Deep Dive",
+        "description": "Targeted UDP reconnaissance of common infrastructure and discovery services.",
+        "args": (
+            "-Pn",
+            "-sU",
+            "-sV",
+            "--version-light",
+            "-p",
+            "53,67,68,69,123,137,161,162,500,514,520,623,1900,4500,5353,5683",
+            "-T3",
+            "--max-retries",
+            "1",
+            "--host-timeout",
+            "45s",
+        ),
+        "timeout": 90,
+        "max_hosts": 1,
+        "sudo": True,
     },
 }
 
@@ -218,6 +238,8 @@ class NetworkScanner:
 
     def _run(self, job, profile):
         command = ["nmap", *profile["args"], "-oX", "-", job["target"]]
+        if profile.get("sudo"):
+            command = ["sudo", "-n", *command]
         try:
             result = subprocess.run(
                 command,
@@ -258,7 +280,7 @@ class NetworkScanner:
             output_path.write_text(json.dumps(completed, indent=2) + "\n")
             with self.lock:
                 self.last_result = completed
-                if job["profile"] == "deep_host":
+                if job["profile"] in {"deep_host", "udp_host"}:
                     self.last_deep_result = completed
                 else:
                     self.last_inventory_result = completed
@@ -270,7 +292,7 @@ class NetworkScanner:
                 public_job = {key: value for key, value in job.items() if not key.startswith("_")}
                 failed = {**public_job, "finished_at": time.time(), "status": "error", "error": str(exc)}
                 self.last_result = failed
-                if job["profile"] == "deep_host":
+                if job["profile"] in {"deep_host", "udp_host"}:
                     self.last_deep_result = failed
                 else:
                     self.last_inventory_result = failed

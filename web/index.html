@@ -1007,7 +1007,10 @@
               >
             </div>
             <button id="netDeep" class="primary" disabled>
-              Deep Dive Selected Host
+              TCP Deep Dive
+            </button>
+            <button id="netUdpDeep" disabled>
+              UDP Deep Dive
             </button>
           </div>
           <p class="label" id="netDescription"></p>
@@ -1701,6 +1704,7 @@
         netTarget = document.querySelector("#netTarget"),
         netRun = document.querySelector("#netRun"),
         netDeep = document.querySelector("#netDeep"),
+        netUdpDeep = document.querySelector("#netUdpDeep"),
         deepDrawer = document.querySelector("#deepDrawer"),
         deepBackdrop = document.querySelector("#deepBackdrop");
       let netProfiles = [],
@@ -1778,6 +1782,7 @@
           ? `${host.ip}${hostname ? " · " + hostname : ""}`
           : "Click an IP address below";
         netDeep.disabled = !host || networkScanRunning;
+        netUdpDeep.disabled = !host || networkScanRunning;
       }
       function openDeepDrawer() {
         deepDrawer.classList.add("open");
@@ -2141,7 +2146,7 @@
             </div>
 
             <div class="channel">
-              <span>OPEN TCP SERVICES</span>
+              <span>OPEN SERVICES</span>
               <b>${ports.length}</b>
             </div>
 
@@ -2180,7 +2185,7 @@
             <tbody>
               ${
                 portRows ||
-                '<tr><td colspan="2">No open TCP ports found.</td></tr>'
+                '<tr><td colspan="2">No confirmed open services found.</td></tr>'
               }
             </tbody>
           </table>
@@ -2210,23 +2215,30 @@
         openDeepDrawer();
       }
 
-      async function runDeepDive() {
+      async function runDeepDive(profile = "deep_host") {
         if (!selectedHostIp) return;
+
+        const label =
+          profile === "udp_host" ? "UDP Deep Dive" : "TCP Deep Dive";
+
         try {
           document.querySelector("#deepStatus").textContent =
-            `Deep Dive running against ${selectedHostIp}…`;
+            `${label} running against ${selectedHostIp}…`;
           document.querySelector("#deepResults").innerHTML = "";
           openDeepDrawer();
+
           let response = await fetch("/api/nmap/run", {
               method: "POST",
               headers: { "Content-Type": "application/json" },
               body: JSON.stringify({
-                profile: "deep_host",
+                profile,
                 target: selectedHostIp,
               }),
             }),
             body = await response.json();
-          if (!response.ok) throw Error(body.error || response.statusText);
+
+          if (!response.ok)
+            throw Error(body.error || response.statusText);
         } catch (error) {
           alert(error.message);
         }
@@ -2303,7 +2315,8 @@
         setTimeout(pollNetwork, 1000);
       }
       netProfile.onchange = updateNetDescription;
-      netDeep.onclick = runDeepDive;
+      netDeep.onclick = () => runDeepDive("deep_host");
+      netUdpDeep.onclick = () => runDeepDive("udp_host");
       document.querySelector("#deepClose").onclick = closeDeepDrawer;
       deepBackdrop.onclick = closeDeepDrawer;
       netRun.onclick = async () => {
