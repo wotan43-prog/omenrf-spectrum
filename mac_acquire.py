@@ -4,6 +4,7 @@ import ipaddress
 import re
 import subprocess
 import time
+from pathlib import Path
 
 MAC_RE = re.compile(
     r'(?i)\b(?:[0-9a-f]{2}:){5}[0-9a-f]{2}\b'
@@ -54,6 +55,28 @@ def read_neighbor(ip):
 
     return None
 
+
+def local_interface_mac(ip):
+    out = run(["ip", "-o", "-4", "addr", "show"], timeout=2)
+
+    for line in out.splitlines():
+        parts = line.split()
+        if len(parts) < 4:
+            continue
+
+        iface = parts[1].rstrip(":")
+        address = parts[3].split("/", 1)[0]
+
+        if address == ip:
+            try:
+                return normalize_mac(
+                    Path(f"/sys/class/net/{iface}/address").read_text()
+                )
+            except OSError:
+                return None
+
+    return None
+
 def acquire_mac(ip):
     try:
         addr = ipaddress.ip_address(ip)
@@ -65,6 +88,10 @@ def acquire_mac(ip):
 
     if addr.is_loopback or addr.is_multicast or addr.is_unspecified:
         return None
+
+    local_mac = local_interface_mac(ip)
+    if local_mac:
+        return local_mac
 
     if not directly_connected(ip):
         return None

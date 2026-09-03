@@ -1643,12 +1643,39 @@
         deepDrawer.setAttribute("aria-hidden", "true");
       }
       function scriptBlocks(scripts) {
-        return (scripts || [])
-          .map(
-            (script) =>
-              `<b>${esc(script.id || "Nmap script")}</b><div class="script-output">${esc(script.output || "No output")}</div>`,
-          )
-          .join("");
+        return (scripts || []).map((script) => {
+          const id = script.id || "Nmap script";
+          const output = script.output || "No output";
+
+          if (id === "port-states") {
+            const open = output.match(/open:\s*([^\n]+)/i);
+            const closed = output.match(/closed:\s*([\s\S]*)/i);
+
+            const count = (text) =>
+              (text || "")
+                .split(",")
+                .map(x => x.trim())
+                .filter(Boolean)
+                .reduce((n, x) => {
+                  const r = x.match(/^(\d+)-(\d+)$/);
+                  return n + (r ? Number(r[2]) - Number(r[1]) + 1 : 1);
+                }, 0);
+
+            return `
+              <b>${esc(id)}</b>
+              <div class="script-output">
+                <strong>${count(open?.[1])}</strong> open ·
+                <strong>${count(closed?.[1])}</strong> closed
+              </div>
+              <details>
+                <summary>Show raw Nmap port-state output</summary>
+                <div class="script-output">${esc(output)}</div>
+              </details>`;
+          }
+
+          return `<b>${esc(id)}</b>
+            <div class="script-output">${esc(output)}</div>`;
+        }).join("");
       }
       function renderDeepDive(result) {
         let host = result?.hosts?.[0];
