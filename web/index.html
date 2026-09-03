@@ -1961,7 +1961,13 @@
             " Vulnerability references were returned for the detected product/version; they are not confirmed findings.";
         }
 
-        return { level, title, text, port: number };
+        return {
+          level,
+          title,
+          text,
+          port: number,
+          protocol: String(port.protocol || "tcp").toLowerCase()
+        };
       }
 
       function buildFindings(host) {
@@ -2006,7 +2012,9 @@
                 <div class="finding-head">
                   ${findingBadge(finding.level)}
                   <strong>${esc(finding.title)}</strong>
-                  <span>${esc(finding.port + "/tcp")}</span>
+                  <span>${esc(
+                    finding.port + "/" + (finding.protocol || "tcp")
+                  )}</span>
                 </div>
                 <div class="finding-text">${esc(finding.text)}</div>
               </div>
