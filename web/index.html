@@ -1916,6 +1916,23 @@
         let title = "";
         let text = "";
 
+        const protocol =
+          String(port.protocol || "tcp").toLowerCase();
+        const state =
+          String(port.state || "").toLowerCase();
+
+        if (protocol === "udp" && state === "open|filtered") {
+          return {
+            level: "indeterminate",
+            title: `${number}/udp response indeterminate`,
+            text:
+              "Nmap received no definitive UDP response. The port may be open or a firewall may be filtering the probe; this is not evidence of a confirmed open service.",
+            port: number,
+            protocol,
+            state
+          };
+        }
+
         if ([21, 23].includes(number)) {
           level = "review";
           title = number === 21 ? "FTP service exposed" : "Telnet service exposed";
@@ -1971,19 +1988,27 @@
           title,
           text,
           port: number,
-          protocol: String(port.protocol || "tcp").toLowerCase()
+          protocol: String(port.protocol || "tcp").toLowerCase(),
+          state: String(port.state || "")
         };
       }
 
       function buildFindings(host) {
-        const ports = (host.ports || []).filter((port) => port.state === "open");
+        const ports = (host.ports || []).filter((port) =>
+          port.state === "open" ||
+          (
+            String(port.protocol || "").toLowerCase() === "udp" &&
+            port.state === "open|filtered"
+          )
+        );
         const findings = ports.map(serviceFinding);
 
         const rank = {
           potential: 0,
           review: 1,
           reference: 2,
-          info: 3
+          indeterminate: 3,
+          info: 4
         };
 
         return findings.sort(
@@ -1998,10 +2023,14 @@
           potential: "POTENTIAL",
           review: "REVIEW",
           reference: "REFERENCE",
+          indeterminate: "INDETERMINATE",
           info: "INFO"
         };
 
-        return `<span class="finding-badge finding-${esc(level)}">${labels[level] || "INFO"}</span>`;
+        const styleLevel =
+          level === "indeterminate" ? "reference" : level;
+
+        return `<span class="finding-badge finding-${esc(styleLevel)}">${labels[level] || "INFO"}</span>`;
       }
 
       function renderFindings(host) {
@@ -2166,7 +2195,8 @@
           <p class="label findings-disclaimer">
             Findings are interpretations of observed services and NSE
             output. Potential vulnerability references are not confirmed
-            vulnerabilities.
+            vulnerabilities. UDP open|filtered results are shown as
+            indeterminate and are not counted as confirmed open services.
           </p>
 
           ${renderFindings(host)}
