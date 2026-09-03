@@ -61,7 +61,6 @@ PROFILES = {
         ),
         "timeout": 90,
         "max_hosts": 1,
-        "sudo": True,
     },
 }
 
@@ -238,8 +237,6 @@ class NetworkScanner:
 
     def _run(self, job, profile):
         command = ["nmap", *profile["args"], "-oX", "-", job["target"]]
-        if profile.get("sudo"):
-            command = ["sudo", "-n", *command]
         try:
             result = subprocess.run(
                 command,
