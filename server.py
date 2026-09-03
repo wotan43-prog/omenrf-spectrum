@@ -2,6 +2,7 @@
 import json, os, re, shutil, signal, subprocess, threading, time
 from collections import deque
 from http.server import ThreadingHTTPServer, SimpleHTTPRequestHandler
+from vendor_enrich import enrich_object
 from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 from capture import PacketRadio
@@ -74,6 +75,7 @@ class Handler(SimpleHTTPRequestHandler):
     def __init__(self,*a,**k): super().__init__(*a,directory=str(WEB),**k)
     def log_message(self,*a): pass
     def json(self,obj,status=200):
+        obj=enrich_object(obj)
         data=json.dumps(obj).encode(); self.send_response(status); self.send_header('Content-Type','application/json'); self.send_header('Cache-Control','no-store'); self.send_header('Content-Length',str(len(data))); self.end_headers(); self.wfile.write(data)
     def json_body(self):
         try: length=int(self.headers.get('Content-Length','0'))

@@ -395,6 +395,84 @@
         flex: 1;
         min-height: 205px;
       }
+      .wifi-waterfall-activity {
+        position: relative;
+        height: 78px;
+        margin-top: 4px;
+        border-top: 1px solid #263136;
+        border-bottom: 1px solid #263136;
+        background:
+          linear-gradient(
+            180deg,
+            rgba(103,245,181,.035),
+            rgba(0,0,0,.12)
+          );
+        overflow: hidden;
+      }
+
+      .wifi-activity-label {
+        position: absolute;
+        left: 6px;
+        top: 4px;
+        z-index: 4;
+        color: #8b9ba3;
+        font-size: 9px;
+        letter-spacing: .08em;
+        pointer-events: none;
+      }
+
+      .wifi-activity-bar {
+        position: absolute;
+        bottom: 17px;
+        min-width: 3px;
+        border-radius: 2px 2px 0 0;
+        background: rgba(103,245,181,.58);
+        border-top: 1px solid #67f5b5;
+        transform: translateX(-50%);
+        transition:
+          height .22s linear,
+          opacity .22s linear;
+      }
+
+      .wifi-activity-bar.current {
+        background: rgba(255,200,87,.82);
+        border-color: #ffc857;
+        box-shadow: 0 0 8px rgba(255,200,87,.45);
+      }
+
+      .wifi-activity-rssi {
+        position: absolute;
+        transform: translateX(-50%);
+        color: #9fb0b6;
+        font-size: 8px;
+        white-space: nowrap;
+        pointer-events: none;
+      }
+
+      .wifi-activity-channel {
+        position: absolute;
+        bottom: 2px;
+        transform: translateX(-50%);
+        color: #769096;
+        font-size: 8px;
+        pointer-events: none;
+      }
+
+      .wifi-activity-channel.current {
+        color: #ffc857;
+        font-weight: 700;
+      }
+
+      #waterLive {
+        color: #67f5b5;
+        margin-left: 10px;
+        font-variant-numeric: tabular-nums;
+      }
+
+      #waterLive.hot {
+        color: #ffc857;
+      }
+
       .waterfall-scale {
         position: relative;
         height: 24px;
@@ -565,11 +643,23 @@
         <section class="card waterfall-card">
           <p class="label">
             WATERFALL — NEWEST AT TOP
+            <span id="waterLive">CH — · — dBm · — pkt/s</span>
             <span id="waterCursor" style="float: right"
               >Channel / signal scale</span
             >
           </p>
           <div class="waterfall-plot"><canvas id="water"></canvas></div>
+
+          <div
+            class="wifi-waterfall-activity"
+            id="wifiWaterfallActivity"
+            aria-label="Live Wi-Fi packet activity by channel"
+          >
+            <span class="wifi-activity-label">
+              802.11 PACKET ACTIVITY
+            </span>
+          </div>
+
           <div class="waterfall-scale" id="waterScale"></div>
           <div class="signal-legend">
             <span>−105 dBm</span>
@@ -917,6 +1007,8 @@
               `<div class="channel"><span>Channel ${ch.n}</span><b>${Math.round(occ[ch.n])}%</b></div>`,
           )
           .join("");
+
+        renderWifiWaterfallActivity();
       }
       async function post(p) {
         let r = await fetch(p, { method: "POST" });
@@ -1591,5 +1683,801 @@
       }
       pollInvestigation();
     </script>
-  </body>
+  
+<!-- OMENRF_RADIO_HEALTH -->
+<style>
+#omenrf-radio-health {
+    position: fixed;
+    top: 12px;
+    right: 16px;
+    z-index: 9999;
+
+    display: flex;
+    gap: 8px;
+    align-items: center;
+
+    padding: 7px 9px;
+
+    background: rgba(10, 14, 18, 0.92);
+    border: 1px solid rgba(255,255,255,.14);
+    border-radius: 8px;
+
+    box-shadow: 0 3px 14px rgba(0,0,0,.35);
+
+    font-family:
+        system-ui,
+        -apple-system,
+        BlinkMacSystemFont,
+        "Segoe UI",
+        sans-serif;
+
+    font-size: 12px;
+    color: #ddd;
+
+    backdrop-filter: blur(8px);
+}
+
+.omenrf-radio-box {
+    display: grid;
+    grid-template-columns: auto auto;
+    column-gap: 7px;
+    row-gap: 1px;
+
+    min-width: 118px;
+    padding: 3px 7px;
+
+    border-left: 3px solid #666;
+}
+
+.omenrf-radio-box.ok {
+    border-left-color: #20c46b;
+}
+
+.omenrf-radio-box.bad {
+    border-left-color: #ef5350;
+}
+
+.omenrf-radio-title {
+    grid-column: 1 / -1;
+
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: .08em;
+
+    color: #aaa;
+}
+
+.omenrf-radio-state {
+    font-weight: 700;
+}
+
+.omenrf-radio-box.ok .omenrf-radio-state {
+    color: #35d97e;
+}
+
+.omenrf-radio-box.bad .omenrf-radio-state {
+    color: #ff625f;
+}
+
+.omenrf-radio-detail {
+    color: #aaa;
+    text-align: right;
+}
+
+#omenrf-radio-health.overall-bad {
+    border-color: rgba(239,83,80,.65);
+}
+
+#omenrf-radio-health.overall-ok {
+    border-color: rgba(32,196,107,.42);
+}
+
+#omenrf-radio-health .health-label {
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: .08em;
+    color: #777;
+    padding: 0 3px;
+}
+
+@media (max-width: 800px) {
+    #omenrf-radio-health {
+        position: relative;
+        top: auto;
+        right: auto;
+
+        margin: 8px;
+        justify-content: center;
+    }
+}
+</style>
+
+<div id="omenrf-radio-health">
+    <div class="health-label">RADIOS</div>
+
+    <div id="omenrf-capture-radio"
+         class="omenrf-radio-box">
+        <div class="omenrf-radio-title">
+            CAPTURE RADIO
+        </div>
+
+        <div class="omenrf-radio-state">
+            CHECKING
+        </div>
+
+        <div class="omenrf-radio-detail">
+            --
+        </div>
+    </div>
+
+    <div id="omenrf-scan-radio"
+         class="omenrf-radio-box">
+        <div class="omenrf-radio-title">
+            SCAN RADIO
+        </div>
+
+        <div class="omenrf-radio-state">
+            CHECKING
+        </div>
+
+        <div class="omenrf-radio-detail">
+            --
+        </div>
+    </div>
+</div>
+
+<script>
+(() => {
+    const root =
+        document.getElementById("omenrf-radio-health");
+
+    const capture =
+        document.getElementById("omenrf-capture-radio");
+
+    const scan =
+        document.getElementById("omenrf-scan-radio");
+
+    const url =
+        `${location.protocol}//${location.hostname}:8766/status`;
+
+    function updateBox(el, ok, state, detail) {
+        el.classList.toggle("ok", ok);
+        el.classList.toggle("bad", !ok);
+
+        el.querySelector(".omenrf-radio-state")
+            .textContent = state;
+
+        el.querySelector(".omenrf-radio-detail")
+            .textContent = detail;
+    }
+
+
+    let omenChannelActivity = {};
+    let omenCurrentCaptureChannel = null;
+
+    function omenChannelFrequency(channel) {
+        channel = Number(channel);
+
+        if (channel === 14)
+            return 2484;
+
+        if (channel >= 1 && channel <= 13)
+            return 2407 + channel * 5;
+
+        if (channel >= 30 && channel <= 200)
+            return 5000 + channel * 5;
+
+        return null;
+    }
+
+    function renderWifiWaterfallActivity() {
+        const root =
+            document.querySelector("#wifiWaterfallActivity");
+
+        const live =
+            document.querySelector("#waterLive");
+
+        if (!root || !live)
+            return;
+
+        const activity =
+            omenChannelActivity || {};
+
+        const current =
+            activity[String(omenCurrentCaptureChannel)] || {};
+
+        const currentRSSI =
+            current.rssi;
+
+        const currentPPS =
+            current.packet_rate;
+
+        live.textContent =
+            `CH ${omenCurrentCaptureChannel ?? "—"} · ` +
+            `${currentRSSI == null ? "—" : Math.round(currentRSSI) + " dBm"} · ` +
+            `${currentPPS == null ? "—" : Math.round(currentPPS) + " pkt/s"}`;
+
+        live.classList.toggle(
+            "hot",
+            Number(currentPPS || 0) >= 500
+        );
+
+        if (!lastSweep) {
+            return;
+        }
+
+        const start =
+            Number(lastSweep.start_mhz);
+
+        const end =
+            Number(lastSweep.end_mhz);
+
+        if (!Number.isFinite(start) ||
+            !Number.isFinite(end) ||
+            end <= start) {
+            return;
+        }
+
+        const entries =
+            Object.entries(activity)
+            .map(([channel, data]) => ({
+                channel: Number(channel),
+                frequency:
+                    omenChannelFrequency(channel),
+                data
+            }))
+            .filter(x =>
+                x.frequency != null &&
+                x.frequency >= start &&
+                x.frequency <= end
+            );
+
+        const maxPPS =
+            Math.max(
+                1,
+                ...entries.map(
+                    x => Number(
+                        x.data.packet_rate || 0
+                    )
+                )
+            );
+
+        let html =
+            '<span class="wifi-activity-label">' +
+            '802.11 PACKET ACTIVITY' +
+            '</span>';
+
+        for (const item of entries) {
+
+            const channel =
+                item.channel;
+
+            const data =
+                item.data || {};
+
+            const pps =
+                Number(data.packet_rate || 0);
+
+            const rssi =
+                data.rssi;
+
+            const left =
+                ((item.frequency - start) /
+                 (end - start)) * 100;
+
+            /*
+             * Square-root scaling keeps one extremely busy
+             * channel from flattening everything else.
+             */
+            const normalized =
+                Math.sqrt(pps / maxPPS);
+
+            const height =
+                pps > 0
+                    ? Math.max(
+                        3,
+                        normalized * 43
+                      )
+                    : 1;
+
+            const opacity =
+                pps > 0
+                    ? Math.max(
+                        .28,
+                        normalized
+                      )
+                    : .10;
+
+            const currentClass =
+                channel ===
+                Number(omenCurrentCaptureChannel)
+                    ? " current"
+                    : "";
+
+            const rssiText =
+                rssi == null
+                    ? ""
+                    : `${Math.round(rssi)} dBm`;
+
+            const rssiBottom =
+                20 + height + 2;
+
+            html +=
+                `<div class="wifi-activity-bar${currentClass}" ` +
+                `style="left:${left}%;height:${height}px;opacity:${opacity}" ` +
+                `title="Channel ${channel}: ${Math.round(pps)} pkt/s` +
+                `${rssi == null ? "" : ", " + rssiText}"></div>`;
+
+            if (rssi != null && pps > 0) {
+                html +=
+                    `<span class="wifi-activity-rssi" ` +
+                    `style="left:${left}%;bottom:${rssiBottom}px">` +
+                    `${rssiText}</span>`;
+            }
+
+            html +=
+                `<span class="wifi-activity-channel${currentClass}" ` +
+                `style="left:${left}%">` +
+                `${channel}</span>`;
+        }
+
+        root.innerHTML = html;
+    }
+
+    async function refreshRadioHealth() {
+        try {
+            const response =
+                await fetch(url, {
+                    cache: "no-store"
+                });
+
+            if (!response.ok) {
+                throw new Error(
+                    `HTTP ${response.status}`
+                );
+            }
+
+            const data =
+                await response.json();
+
+            const c =
+                data.capture || {};
+
+            const s =
+                data.scan || {};
+
+            const captureOK =
+                !!c.present &&
+                !!c.capture_process;
+
+            const scanOK =
+                !!s.present;
+
+            const activity = c.activity || {};
+  /* OMENRF_WIFI_ACTIVITY_HEALTH */
+  omenChannelActivity = c.channel_activity || {};
+  omenCurrentCaptureChannel =
+    (c.channel === undefined || c.channel === null)
+      ? null
+      : Number(c.channel);
+  renderWifiWaterfallActivity();
+
+
+            omenChannelActivity =
+                c.channel_activity || {};
+
+            omenCurrentCaptureChannel =
+                c.channel ?? null;
+
+            renderWifiWaterfallActivity();
+
+            const captureDetail = [
+                c.interface || "--",
+
+                c.channel
+                    ? `CH ${c.channel}`
+                    : null,
+
+                activity.rssi !== null &&
+                activity.rssi !== undefined
+                    ? `${activity.rssi} dBm`
+                    : null,
+
+                activity.packet_rate !== null &&
+                activity.packet_rate !== undefined
+                    ? `${activity.packet_rate} pkt/s`
+                    : null
+            ]
+            .filter(Boolean)
+            .join(" · ");
+
+            const scanDetail = [
+                s.interface || "--",
+                s.channel
+                    ? `CH ${s.channel}`
+                    : null
+            ]
+            .filter(Boolean)
+            .join(" · ");
+
+            updateBox(
+                capture,
+                captureOK,
+                captureOK ? "ONLINE" : "FAULT",
+                captureDetail
+            );
+
+            updateBox(
+                scan,
+                scanOK,
+                scanOK ? "ONLINE" : "FAULT",
+                scanDetail
+            );
+
+            root.classList.toggle(
+                "overall-ok",
+                !!data.healthy
+            );
+
+            root.classList.toggle(
+                "overall-bad",
+                !data.healthy
+            );
+
+        } catch (err) {
+            updateBox(
+                capture,
+                false,
+                "NO DATA",
+                "--"
+            );
+
+            updateBox(
+                scan,
+                false,
+                "NO DATA",
+                "--"
+            );
+
+            root.classList.remove("overall-ok");
+            root.classList.add("overall-bad");
+        }
+    }
+
+    refreshRadioHealth();
+
+    setInterval(
+        refreshRadioHealth,
+        3000
+    );
+
+  /* OMENRF_WIFI_ACTIVITY_DRAW */
+  renderWifiWaterfallActivity();
+})();
+</script>
+
+
+<style id="OMENRF_CHANNEL_DETAIL_V1">
+.omenrf-channel-detail {
+  margin-top: 12px;
+  border: 1px solid rgba(90,255,205,.14);
+  background: rgba(0,0,0,.15);
+  border-radius: 6px;
+  padding: 12px;
+  min-height: 150px;
+}
+
+.omenrf-channel-detail-title {
+  font-size: 10px;
+  letter-spacing: .08em;
+  opacity: .65;
+  margin-bottom: 10px;
+}
+
+.omenrf-channel-grid {
+  display: grid;
+  grid-template-columns: repeat(4,minmax(110px,1fr));
+  gap: 8px;
+}
+
+.omenrf-channel-stat {
+  border: 1px solid rgba(255,255,255,.07);
+  border-radius: 4px;
+  padding: 8px;
+  background: rgba(255,255,255,.015);
+}
+
+.omenrf-channel-stat .label {
+  display: block;
+  font-size: 9px;
+  opacity: .5;
+  margin-bottom: 4px;
+}
+
+.omenrf-channel-stat .value {
+  font-size: 16px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.omenrf-channel-detail-note {
+  margin-top: 10px;
+  font-size: 9px;
+  opacity: .45;
+}
+
+.omenrf-portstates-summary {
+  padding: 10px;
+  border: 1px solid rgba(255,255,255,.08);
+  border-radius: 4px;
+  font-size: 12px;
+}
+
+.omenrf-portstates-raw {
+  margin-top: 8px;
+}
+
+.omenrf-portstates-raw summary {
+  cursor: pointer;
+  opacity: .65;
+  font-size: 10px;
+}
+</style>
+
+<script>
+(function () {
+  function freqForChannel(ch) {
+    ch = Number(ch);
+    if (ch === 14) return 2484;
+    if (ch >= 1 && ch <= 13) return 2407 + ch * 5;
+    if (ch >= 30 && ch <= 200) return 5000 + ch * 5;
+    return null;
+  }
+
+  function findOccupancyArea() {
+    const all = [...document.querySelectorAll("body *")];
+
+    const label = all.find(el =>
+      el.children.length === 0 &&
+      /ESTIMATED CHANNEL OCCUPANCY/i.test(el.textContent || "")
+    );
+
+    if (!label) return null;
+
+    let node = label.parentElement;
+
+    for (let i = 0; i < 4 && node; i++, node = node.parentElement) {
+      const txt = node.textContent || "";
+      if (/Channel 1/i.test(txt) || /Channel 36/i.test(txt))
+        return node;
+    }
+
+    return label.parentElement;
+  }
+
+  function occupancyFor(ch) {
+    const area = findOccupancyArea();
+    if (!area) return null;
+
+    const re = new RegExp(
+      "Channel\\s+" + Number(ch) + "\\s+([0-9]+)%",
+      "i"
+    );
+
+    const m = (area.textContent || "").match(re);
+    return m ? Number(m[1]) : null;
+  }
+
+  function ensurePanel() {
+    if (document.getElementById("omenrfChannelDetail"))
+      return document.getElementById("omenrfChannelDetail");
+
+    const area = findOccupancyArea();
+    if (!area) return null;
+
+    const panel = document.createElement("div");
+    panel.id = "omenrfChannelDetail";
+    panel.className = "omenrf-channel-detail";
+
+    panel.innerHTML = `
+      <div class="omenrf-channel-detail-title">
+        CHANNEL DETAIL — WI-SPY RF + 802.11 PACKETS
+      </div>
+
+      <div class="omenrf-channel-grid">
+        <div class="omenrf-channel-stat">
+          <span class="label">CHANNEL</span>
+          <span class="value" id="ocdChannel">—</span>
+        </div>
+
+        <div class="omenrf-channel-stat">
+          <span class="label">CENTER FREQ</span>
+          <span class="value" id="ocdFreq">—</span>
+        </div>
+
+        <div class="omenrf-channel-stat">
+          <span class="label">EST. OCCUPANCY</span>
+          <span class="value" id="ocdOccupancy">—</span>
+        </div>
+
+        <div class="omenrf-channel-stat">
+          <span class="label">PACKET RATE</span>
+          <span class="value" id="ocdPacketRate">—</span>
+        </div>
+
+        <div class="omenrf-channel-stat">
+          <span class="label">AVG RSSI</span>
+          <span class="value" id="ocdRssi">—</span>
+        </div>
+
+        <div class="omenrf-channel-stat">
+          <span class="label">PEAK RSSI</span>
+          <span class="value" id="ocdPeakRssi">—</span>
+        </div>
+
+        <div class="omenrf-channel-stat">
+          <span class="label">SAMPLES</span>
+          <span class="value" id="ocdSamples">—</span>
+        </div>
+
+        <div class="omenrf-channel-stat">
+          <span class="label">LAST OBSERVED</span>
+          <span class="value" id="ocdSeen" style="font-size:11px">—</span>
+        </div>
+      </div>
+
+      <div class="omenrf-channel-detail-note">
+        RF occupancy is derived from Wi-Spy spectrum energy.
+        Packet rate and RSSI are independently measured by the Linksys monitor radio.
+      </div>
+    `;
+
+    area.appendChild(panel);
+    return panel;
+  }
+
+  function currentChannel() {
+    if (typeof omenCurrentCaptureChannel !== "undefined" &&
+        omenCurrentCaptureChannel !== null)
+      return Number(omenCurrentCaptureChannel);
+
+    const live = document.getElementById("waterLive");
+
+    if (live) {
+      const m = live.textContent.match(/CH\s+([0-9]+)/i);
+      if (m) return Number(m[1]);
+    }
+
+    return null;
+  }
+
+  function updatePanel() {
+    const panel = ensurePanel();
+    if (!panel) return;
+
+    const ch = currentChannel();
+    if (!ch) return;
+
+    const activity =
+      (typeof omenChannelActivity !== "undefined" &&
+       omenChannelActivity &&
+       omenChannelActivity[String(ch)])
+        ? omenChannelActivity[String(ch)]
+        : {};
+
+    const freq = freqForChannel(ch);
+    const occ = occupancyFor(ch);
+
+    document.getElementById("ocdChannel").textContent =
+      "CH " + ch;
+
+    document.getElementById("ocdFreq").textContent =
+      freq ? freq + " MHz" : "—";
+
+    document.getElementById("ocdOccupancy").textContent =
+      occ === null ? "—" : occ + "%";
+
+    document.getElementById("ocdPacketRate").textContent =
+      activity.packet_rate == null
+        ? "—"
+        : Number(activity.packet_rate).toFixed(1) + " pkt/s";
+
+    document.getElementById("ocdRssi").textContent =
+      activity.rssi == null
+        ? "—"
+        : Number(activity.rssi).toFixed(1) + " dBm";
+
+    document.getElementById("ocdPeakRssi").textContent =
+      activity.peak_rssi == null
+        ? "—"
+        : Number(activity.peak_rssi).toFixed(1) + " dBm";
+
+    document.getElementById("ocdSamples").textContent =
+      activity.samples == null ? "—" : activity.samples;
+
+    let seen = "—";
+
+    if (activity.last_seen) {
+      try {
+        seen = new Date(activity.last_seen)
+          .toLocaleTimeString([], {
+            hour: "2-digit",
+            minute: "2-digit",
+            second: "2-digit"
+          });
+      } catch (_) {}
+    }
+
+    document.getElementById("ocdSeen").textContent = seen;
+  }
+
+  function cleanPortStates() {
+    const els = [...document.querySelectorAll("body *")];
+
+    for (const heading of els) {
+      if (
+        heading.children.length !== 0 ||
+        (heading.textContent || "").trim().toLowerCase() !== "port-states"
+      )
+        continue;
+
+      const box = heading.nextElementSibling;
+      if (!box || box.dataset.omenrfCleaned === "1")
+        continue;
+
+      const raw = box.textContent || "";
+
+      if (raw.length < 150)
+        continue;
+
+      const openMatch = raw.match(/open:\s*([0-9,\s]+)/i);
+      const closedMatch = raw.match(/closed:\s*([0-9,\s]+)/i);
+
+      function countPorts(m) {
+        if (!m) return 0;
+
+        return m[1]
+          .split(",")
+          .map(v => v.trim())
+          .filter(Boolean)
+          .length;
+      }
+
+      const openCount = countPorts(openMatch);
+      const closedCount = countPorts(closedMatch);
+
+      const wrapper = document.createElement("div");
+
+      wrapper.innerHTML = `
+        <div class="omenrf-portstates-summary">
+          <strong>${openCount}</strong> open ·
+          <strong>${closedCount}</strong> closed
+        </div>
+        <details class="omenrf-portstates-raw">
+          <summary>Show raw Nmap port-state output</summary>
+          <pre></pre>
+        </details>
+      `;
+
+      wrapper.querySelector("pre").textContent = raw;
+
+      box.textContent = "";
+      box.appendChild(wrapper);
+      box.dataset.omenrfCleaned = "1";
+    }
+  }
+
+  setInterval(() => {
+    updatePanel();
+    cleanPortStates();
+  }, 1000);
+
+  document.addEventListener("DOMContentLoaded", () => {
+    updatePanel();
+    cleanPortStates();
+  });
+})();
+</script>
+
+</body>
 </html>
