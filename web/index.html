@@ -518,6 +518,61 @@
         gap: 8px;
         flex-wrap: wrap;
       }
+
+      .rf-channel-detail {
+        margin-top: 12px;
+        padding: 12px;
+        background: #0a0f11;
+        border: 1px solid #263136;
+        border-radius: 8px;
+      }
+
+      .rf-channel-detail-title {
+        color: #b9d4df;
+        font-size: 10px;
+        letter-spacing: .09em;
+        margin-bottom: 10px;
+      }
+
+      .rf-channel-detail-grid {
+        display: grid;
+        grid-template-columns: repeat(4, minmax(115px, 1fr));
+        gap: 8px;
+      }
+
+      .rf-channel-stat {
+        padding: 8px;
+        border: 1px solid #263136;
+        background: #080b0d;
+        border-radius: 6px;
+      }
+
+      .rf-channel-stat span {
+        display: block;
+        color: var(--muted);
+        font-size: 9px;
+        letter-spacing: .06em;
+      }
+
+      .rf-channel-stat b {
+        display: block;
+        margin-top: 4px;
+        color: var(--green);
+        font-size: 15px;
+        font-variant-numeric: tabular-nums;
+      }
+
+      .rf-channel-note {
+        margin-top: 9px;
+        color: var(--muted);
+        font-size: 9px;
+      }
+
+      @media (max-width: 700px) {
+        .rf-channel-detail-grid {
+          grid-template-columns: repeat(2, minmax(110px, 1fr));
+        }
+      }
       .channel {
         min-width: 96px;
         flex: 1;
@@ -639,6 +694,59 @@
             ESTIMATED CHANNEL OCCUPANCY &gt; −82 dBm
           </p>
           <div class="channel-grid" id="channelGrid"></div>
+
+          <div class="rf-channel-detail" id="rfChannelDetail">
+            <div class="rf-channel-detail-title">
+              CHANNEL DETAIL — WI-SPY RF
+            </div>
+
+            <div class="rf-channel-detail-grid">
+              <div class="rf-channel-stat">
+                <span>CHANNEL</span>
+                <b id="rfDetailChannel">—</b>
+              </div>
+
+              <div class="rf-channel-stat">
+                <span>CENTER FREQ</span>
+                <b id="rfDetailFreq">—</b>
+              </div>
+
+              <div class="rf-channel-stat">
+                <span>RF CURRENT</span>
+                <b id="rfDetailCurrent">—</b>
+              </div>
+
+              <div class="rf-channel-stat">
+                <span>RF AVERAGE</span>
+                <b id="rfDetailAverage">—</b>
+              </div>
+
+              <div class="rf-channel-stat">
+                <span>RF PEAK</span>
+                <b id="rfDetailPeak">—</b>
+              </div>
+
+              <div class="rf-channel-stat">
+                <span>EST. OCCUPANCY</span>
+                <b id="rfDetailOccupancy">—</b>
+              </div>
+
+              <div class="rf-channel-stat">
+                <span>PACKET RATE</span>
+                <b id="rfDetailPackets">—</b>
+              </div>
+
+              <div class="rf-channel-stat">
+                <span>802.11 RSSI</span>
+                <b id="rfDetailRssi">—</b>
+              </div>
+            </div>
+
+            <div class="rf-channel-note">
+              RF current / average / peak come from Wi-Spy spectrum energy.
+              Packet rate and RSSI come independently from the Linksys monitor radio.
+            </div>
+          </div>
         </section>
         <section class="card waterfall-card">
           <p class="label">
@@ -1009,7 +1117,76 @@
           .join("");
 
         renderWifiWaterfallActivity();
+        renderRfChannelDetail();
       }
+
+      function renderRfChannelDetail() {
+        if (!lastSweep) return;
+
+        const ch = Number(omenCurrentCaptureChannel);
+        if (!Number.isFinite(ch)) return;
+
+        const freq = omenChannelFrequency(ch);
+        if (!freq) return;
+
+        const s = lastSweep;
+        const span = s.end_mhz - s.start_mhz;
+
+        if (
+          freq < s.start_mhz ||
+          freq > s.end_mhz ||
+          span <= 0
+        ) {
+          return;
+        }
+
+        const index = Math.max(
+          0,
+          Math.min(
+            s.values.length - 1,
+            Math.round(
+              ((freq - s.start_mhz) / span) *
+              (s.values.length - 1)
+            )
+          )
+        );
+
+        const current = s.values[index];
+        const average = avg[index];
+        const heldPeak = peak[index];
+
+        const activity =
+          omenChannelActivity[String(ch)] || {};
+
+        document.querySelector("#rfDetailChannel").textContent =
+          "CH " + ch;
+
+        document.querySelector("#rfDetailFreq").textContent =
+          freq + " MHz";
+
+        document.querySelector("#rfDetailCurrent").textContent =
+          current == null ? "—" : Math.round(current) + " dBm";
+
+        document.querySelector("#rfDetailAverage").textContent =
+          average == null ? "—" : Math.round(average) + " dBm";
+
+        document.querySelector("#rfDetailPeak").textContent =
+          heldPeak == null ? "—" : Math.round(heldPeak) + " dBm";
+
+        document.querySelector("#rfDetailOccupancy").textContent =
+          occ[ch] == null ? "—" : Math.round(occ[ch]) + "%";
+
+        document.querySelector("#rfDetailPackets").textContent =
+          activity.packet_rate == null
+            ? "—"
+            : Number(activity.packet_rate).toFixed(1) + " pkt/s";
+
+        document.querySelector("#rfDetailRssi").textContent =
+          activity.rssi == null
+            ? "—"
+            : Number(activity.rssi).toFixed(1) + " dBm";
+      }
+
       async function post(p) {
         let r = await fetch(p, { method: "POST" });
         let j = await r.json();
@@ -1827,6 +2004,19 @@
 </div>
 
 <script>
+let omenChannelActivity = {};
+let omenCurrentCaptureChannel = null;
+
+function omenChannelFrequency(channel) {
+    channel = Number(channel);
+
+    if (channel === 14) return 2484;
+    if (channel >= 1 && channel <= 13) return 2407 + channel * 5;
+    if (channel >= 30 && channel <= 200) return 5000 + channel * 5;
+
+    return null;
+}
+
 (() => {
     const root =
         document.getElementById("omenrf-radio-health");
@@ -1852,25 +2042,7 @@
     }
 
 
-    let omenChannelActivity = {};
-    let omenCurrentCaptureChannel = null;
-
-    function omenChannelFrequency(channel) {
-        channel = Number(channel);
-
-        if (channel === 14)
-            return 2484;
-
-        if (channel >= 1 && channel <= 13)
-            return 2407 + channel * 5;
-
-        if (channel >= 30 && channel <= 200)
-            return 5000 + channel * 5;
-
-        return null;
-    }
-
-    function renderWifiWaterfallActivity() {
+    window.renderWifiWaterfallActivity = function renderWifiWaterfallActivity() {
         const root =
             document.querySelector("#wifiWaterfallActivity");
 
@@ -2008,9 +2180,13 @@
                 `title="Channel ${channel}: ${Math.round(pps)} pkt/s` +
                 `${rssi == null ? "" : ", " + rssiText}"></div>`;
 
-            if (rssi != null && pps > 0) {
+            if (
+                rssi != null &&
+                pps > 0 &&
+                channel === Number(omenCurrentCaptureChannel)
+            ) {
                 html +=
-                    `<span class="wifi-activity-rssi" ` +
+                    `<span class="wifi-activity-rssi current" ` +
                     `style="left:${left}%;bottom:${rssiBottom}px">` +
                     `${rssiText}</span>`;
             }
@@ -2157,327 +2333,7 @@
 </script>
 
 
-<style id="OMENRF_CHANNEL_DETAIL_V1">
-.omenrf-channel-detail {
-  margin-top: 12px;
-  border: 1px solid rgba(90,255,205,.14);
-  background: rgba(0,0,0,.15);
-  border-radius: 6px;
-  padding: 12px;
-  min-height: 150px;
-}
 
-.omenrf-channel-detail-title {
-  font-size: 10px;
-  letter-spacing: .08em;
-  opacity: .65;
-  margin-bottom: 10px;
-}
-
-.omenrf-channel-grid {
-  display: grid;
-  grid-template-columns: repeat(4,minmax(110px,1fr));
-  gap: 8px;
-}
-
-.omenrf-channel-stat {
-  border: 1px solid rgba(255,255,255,.07);
-  border-radius: 4px;
-  padding: 8px;
-  background: rgba(255,255,255,.015);
-}
-
-.omenrf-channel-stat .label {
-  display: block;
-  font-size: 9px;
-  opacity: .5;
-  margin-bottom: 4px;
-}
-
-.omenrf-channel-stat .value {
-  font-size: 16px;
-  font-weight: 700;
-  font-variant-numeric: tabular-nums;
-}
-
-.omenrf-channel-detail-note {
-  margin-top: 10px;
-  font-size: 9px;
-  opacity: .45;
-}
-
-.omenrf-portstates-summary {
-  padding: 10px;
-  border: 1px solid rgba(255,255,255,.08);
-  border-radius: 4px;
-  font-size: 12px;
-}
-
-.omenrf-portstates-raw {
-  margin-top: 8px;
-}
-
-.omenrf-portstates-raw summary {
-  cursor: pointer;
-  opacity: .65;
-  font-size: 10px;
-}
-</style>
-
-<script>
-(function () {
-  function freqForChannel(ch) {
-    ch = Number(ch);
-    if (ch === 14) return 2484;
-    if (ch >= 1 && ch <= 13) return 2407 + ch * 5;
-    if (ch >= 30 && ch <= 200) return 5000 + ch * 5;
-    return null;
-  }
-
-  function findOccupancyArea() {
-    const all = [...document.querySelectorAll("body *")];
-
-    const label = all.find(el =>
-      el.children.length === 0 &&
-      /ESTIMATED CHANNEL OCCUPANCY/i.test(el.textContent || "")
-    );
-
-    if (!label) return null;
-
-    let node = label.parentElement;
-
-    for (let i = 0; i < 4 && node; i++, node = node.parentElement) {
-      const txt = node.textContent || "";
-      if (/Channel 1/i.test(txt) || /Channel 36/i.test(txt))
-        return node;
-    }
-
-    return label.parentElement;
-  }
-
-  function occupancyFor(ch) {
-    const area = findOccupancyArea();
-    if (!area) return null;
-
-    const re = new RegExp(
-      "Channel\\s+" + Number(ch) + "\\s+([0-9]+)%",
-      "i"
-    );
-
-    const m = (area.textContent || "").match(re);
-    return m ? Number(m[1]) : null;
-  }
-
-  function ensurePanel() {
-    if (document.getElementById("omenrfChannelDetail"))
-      return document.getElementById("omenrfChannelDetail");
-
-    const area = findOccupancyArea();
-    if (!area) return null;
-
-    const panel = document.createElement("div");
-    panel.id = "omenrfChannelDetail";
-    panel.className = "omenrf-channel-detail";
-
-    panel.innerHTML = `
-      <div class="omenrf-channel-detail-title">
-        CHANNEL DETAIL — WI-SPY RF + 802.11 PACKETS
-      </div>
-
-      <div class="omenrf-channel-grid">
-        <div class="omenrf-channel-stat">
-          <span class="label">CHANNEL</span>
-          <span class="value" id="ocdChannel">—</span>
-        </div>
-
-        <div class="omenrf-channel-stat">
-          <span class="label">CENTER FREQ</span>
-          <span class="value" id="ocdFreq">—</span>
-        </div>
-
-        <div class="omenrf-channel-stat">
-          <span class="label">EST. OCCUPANCY</span>
-          <span class="value" id="ocdOccupancy">—</span>
-        </div>
-
-        <div class="omenrf-channel-stat">
-          <span class="label">PACKET RATE</span>
-          <span class="value" id="ocdPacketRate">—</span>
-        </div>
-
-        <div class="omenrf-channel-stat">
-          <span class="label">AVG RSSI</span>
-          <span class="value" id="ocdRssi">—</span>
-        </div>
-
-        <div class="omenrf-channel-stat">
-          <span class="label">PEAK RSSI</span>
-          <span class="value" id="ocdPeakRssi">—</span>
-        </div>
-
-        <div class="omenrf-channel-stat">
-          <span class="label">SAMPLES</span>
-          <span class="value" id="ocdSamples">—</span>
-        </div>
-
-        <div class="omenrf-channel-stat">
-          <span class="label">LAST OBSERVED</span>
-          <span class="value" id="ocdSeen" style="font-size:11px">—</span>
-        </div>
-      </div>
-
-      <div class="omenrf-channel-detail-note">
-        RF occupancy is derived from Wi-Spy spectrum energy.
-        Packet rate and RSSI are independently measured by the Linksys monitor radio.
-      </div>
-    `;
-
-    area.appendChild(panel);
-    return panel;
-  }
-
-  function currentChannel() {
-    if (typeof omenCurrentCaptureChannel !== "undefined" &&
-        omenCurrentCaptureChannel !== null)
-      return Number(omenCurrentCaptureChannel);
-
-    const live = document.getElementById("waterLive");
-
-    if (live) {
-      const m = live.textContent.match(/CH\s+([0-9]+)/i);
-      if (m) return Number(m[1]);
-    }
-
-    return null;
-  }
-
-  function updatePanel() {
-    const panel = ensurePanel();
-    if (!panel) return;
-
-    const ch = currentChannel();
-    if (!ch) return;
-
-    const activity =
-      (typeof omenChannelActivity !== "undefined" &&
-       omenChannelActivity &&
-       omenChannelActivity[String(ch)])
-        ? omenChannelActivity[String(ch)]
-        : {};
-
-    const freq = freqForChannel(ch);
-    const occ = occupancyFor(ch);
-
-    document.getElementById("ocdChannel").textContent =
-      "CH " + ch;
-
-    document.getElementById("ocdFreq").textContent =
-      freq ? freq + " MHz" : "—";
-
-    document.getElementById("ocdOccupancy").textContent =
-      occ === null ? "—" : occ + "%";
-
-    document.getElementById("ocdPacketRate").textContent =
-      activity.packet_rate == null
-        ? "—"
-        : Number(activity.packet_rate).toFixed(1) + " pkt/s";
-
-    document.getElementById("ocdRssi").textContent =
-      activity.rssi == null
-        ? "—"
-        : Number(activity.rssi).toFixed(1) + " dBm";
-
-    document.getElementById("ocdPeakRssi").textContent =
-      activity.peak_rssi == null
-        ? "—"
-        : Number(activity.peak_rssi).toFixed(1) + " dBm";
-
-    document.getElementById("ocdSamples").textContent =
-      activity.samples == null ? "—" : activity.samples;
-
-    let seen = "—";
-
-    if (activity.last_seen) {
-      try {
-        seen = new Date(activity.last_seen)
-          .toLocaleTimeString([], {
-            hour: "2-digit",
-            minute: "2-digit",
-            second: "2-digit"
-          });
-      } catch (_) {}
-    }
-
-    document.getElementById("ocdSeen").textContent = seen;
-  }
-
-  function cleanPortStates() {
-    const els = [...document.querySelectorAll("body *")];
-
-    for (const heading of els) {
-      if (
-        heading.children.length !== 0 ||
-        (heading.textContent || "").trim().toLowerCase() !== "port-states"
-      )
-        continue;
-
-      const box = heading.nextElementSibling;
-      if (!box || box.dataset.omenrfCleaned === "1")
-        continue;
-
-      const raw = box.textContent || "";
-
-      if (raw.length < 150)
-        continue;
-
-      const openMatch = raw.match(/open:\s*([0-9,\s]+)/i);
-      const closedMatch = raw.match(/closed:\s*([0-9,\s]+)/i);
-
-      function countPorts(m) {
-        if (!m) return 0;
-
-        return m[1]
-          .split(",")
-          .map(v => v.trim())
-          .filter(Boolean)
-          .length;
-      }
-
-      const openCount = countPorts(openMatch);
-      const closedCount = countPorts(closedMatch);
-
-      const wrapper = document.createElement("div");
-
-      wrapper.innerHTML = `
-        <div class="omenrf-portstates-summary">
-          <strong>${openCount}</strong> open ·
-          <strong>${closedCount}</strong> closed
-        </div>
-        <details class="omenrf-portstates-raw">
-          <summary>Show raw Nmap port-state output</summary>
-          <pre></pre>
-        </details>
-      `;
-
-      wrapper.querySelector("pre").textContent = raw;
-
-      box.textContent = "";
-      box.appendChild(wrapper);
-      box.dataset.omenrfCleaned = "1";
-    }
-  }
-
-  setInterval(() => {
-    updatePanel();
-    cleanPortStates();
-  }, 1000);
-
-  document.addEventListener("DOMContentLoaded", () => {
-    updatePanel();
-    cleanPortStates();
-  });
-})();
-</script>
 
 </body>
 </html>
