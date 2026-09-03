@@ -1,5 +1,6 @@
 import ipaddress
 import json
+import socket
 import os
 import subprocess
 import threading
@@ -61,6 +62,7 @@ PROFILES = {
         ),
         "timeout": 90,
         "max_hosts": 1,
+        "privileged_helper": "udp",
     },
 }
 
@@ -238,16 +240,45 @@ class NetworkScanner:
     def _run(self, job, profile):
         command = ["nmap", *profile["args"], "-oX", "-", job["target"]]
         try:
-            result = subprocess.run(
-                command,
-                capture_output=True,
-                text=True,
-                timeout=profile["timeout"],
-                check=False,
-            )
-            if result.returncode != 0:
-                raise RuntimeError(result.stderr.strip() or f"nmap exited with status {result.returncode}")
-            parsed = parse_nmap_xml(result.stdout)
+            if profile.get("privileged_helper") == "udp":
+                request = json.dumps({"target": job["target"]}).encode()
+
+                with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as client:
+                    client.settimeout(profile["timeout"])
+                    client.connect("/run/omenrf/udp-scan.sock")
+                    client.sendall(request)
+
+                    chunks = []
+                    while True:
+                        chunk = client.recv(65536)
+                        if not chunk:
+                            break
+                        chunks.append(chunk)
+
+                helper = json.loads(b"".join(chunks).decode())
+                if helper.get("returncode") != 0:
+                    raise RuntimeError(
+                        helper.get("stderr")
+                        or f"UDP helper exited with status {helper.get('returncode')}"
+                    )
+
+                output = helper.get("stdout", "")
+            else:
+                result = subprocess.run(
+                    command,
+                    capture_output=True,
+                    text=True,
+                    timeout=profile["timeout"],
+                    check=False,
+                )
+                if result.returncode != 0:
+                    raise RuntimeError(
+                        result.stderr.strip()
+                        or f"nmap exited with status {result.returncode}"
+                    )
+                output = result.stdout
+
+            parsed = parse_nmap_xml(output)
             wireless = {
                 (item.get("mac") or item.get("bssid", "")).lower(): item
                 for item in self.wireless_snapshot()
