@@ -3001,3 +3001,37 @@ function omenChannelFrequency(channel) {
 
 </body>
 </html>
+
+<style>
+/* OMENRF_RADIO_HEALTH_HEADER_FIX */
+header {
+    flex-wrap: wrap;
+    gap: 12px;
+}
+
+#omenrf-radio-health {
+    position: static !important;
+    top: auto !important;
+    right: auto !important;
+    z-index: auto !important;
+    margin-left: auto;
+    box-shadow: none;
+    backdrop-filter: none;
+}
+</style>
+
+<script>
+(() => {
+    const radios = document.getElementById("omenrf-radio-health");
+    const header = document.querySelector("header");
+    const status = document.getElementById("status");
+
+    if (radios && header) {
+        if (status && status.parentNode === header) {
+            header.insertBefore(radios, status);
+        } else {
+            header.appendChild(radios);
+        }
+    }
+})();
+</script>
