@@ -203,6 +203,39 @@
         gap: 8px;
         margin-bottom: 12px;
       }
+      .service-scripts,
+      .nse-result {
+        margin-top: 7px;
+      }
+
+      .service-scripts > summary,
+      .nse-result > summary {
+        cursor: pointer;
+        color: var(--muted);
+        font-size: 11px;
+        line-height: 1.35;
+      }
+
+      .nse-result {
+        margin-left: 8px;
+      }
+
+      .nse-name {
+        color: var(--green);
+        font-weight: 700;
+      }
+
+      .nse-summary {
+        margin-left: 6px;
+        color: var(--muted);
+      }
+
+      .nse-result .script-output {
+        margin-top: 6px;
+        max-height: 320px;
+        overflow: auto;
+      }
+
       .script-output {
         white-space: pre-wrap;
         overflow-wrap: anywhere;
@@ -1642,41 +1675,113 @@
         deepBackdrop.classList.remove("open");
         deepDrawer.setAttribute("aria-hidden", "true");
       }
+      function countPortRanges(text) {
+        return (text || "")
+          .split(",")
+          .map((item) => item.trim())
+          .filter(Boolean)
+          .reduce((total, item) => {
+            const range = item.match(/^(\d+)\s*-\s*(\d+)$/);
+
+            if (range) {
+              const first = Number(range[1]);
+              const last = Number(range[2]);
+              return total + Math.max(0, last - first + 1);
+            }
+
+            return total + 1;
+          }, 0);
+      }
+
+      function compactScriptSummary(script) {
+        const id = script.id || "Nmap script";
+        const output = script.output || "";
+
+        if (id === "port-states") {
+          const open = output.match(/open:\s*([^\n]+)/i);
+          const closed = output.match(/closed:\s*([\s\S]*)/i);
+
+          return (
+            `${countPortRanges(open?.[1])} open · ` +
+            `${countPortRanges(closed?.[1])} closed`
+          );
+        }
+
+        if (id === "vulners") {
+          const cves = [...new Set(
+            (output.match(/CVE-\d{4}-\d+/gi) || [])
+              .map((value) => value.toUpperCase())
+          )];
+
+          if (cves.length)
+            return `${cves.length} potential CVE reference${cves.length === 1 ? "" : "s"}`;
+
+          return "Potential vulnerability references returned";
+        }
+
+        if (/VULNERABLE:/i.test(output))
+          return "Potential vulnerability reported by NSE";
+
+        if (/ERROR:/i.test(output))
+          return "Script returned an error";
+
+        const firstLine = output
+          .split("\n")
+          .map((line) => line.trim())
+          .find(Boolean);
+
+        if (!firstLine)
+          return "No output";
+
+        return firstLine.length > 110
+          ? firstLine.slice(0, 107) + "…"
+          : firstLine;
+      }
+
       function scriptBlocks(scripts) {
-        return (scripts || []).map((script) => {
-          const id = script.id || "Nmap script";
-          const output = script.output || "No output";
-
-          if (id === "port-states") {
-            const open = output.match(/open:\s*([^\n]+)/i);
-            const closed = output.match(/closed:\s*([\s\S]*)/i);
-
-            const count = (text) =>
-              (text || "")
-                .split(",")
-                .map(x => x.trim())
-                .filter(Boolean)
-                .reduce((n, x) => {
-                  const r = x.match(/^(\d+)-(\d+)$/);
-                  return n + (r ? Number(r[2]) - Number(r[1]) + 1 : 1);
-                }, 0);
+        return (scripts || [])
+          .map((script) => {
+            const id = script.id || "Nmap script";
+            const output = script.output || "No output";
+            const summary = compactScriptSummary(script);
 
             return `
-              <b>${esc(id)}</b>
-              <div class="script-output">
-                <strong>${count(open?.[1])}</strong> open ·
-                <strong>${count(closed?.[1])}</strong> closed
-              </div>
-              <details>
-                <summary>Show raw Nmap port-state output</summary>
+              <details class="nse-result">
+                <summary>
+                  <span class="nse-name">${esc(id)}</span>
+                  <span class="nse-summary">${esc(summary)}</span>
+                </summary>
                 <div class="script-output">${esc(output)}</div>
               </details>`;
-          }
-
-          return `<b>${esc(id)}</b>
-            <div class="script-output">${esc(output)}</div>`;
-        }).join("");
+          })
+          .join("");
       }
+
+      function serviceScriptSummary(scripts) {
+        const items = scripts || [];
+
+        if (!items.length)
+          return "";
+
+        const potential = items.filter((script) =>
+          script.id === "vulners" ||
+          /VULNERABLE:/i.test(script.output || "")
+        ).length;
+
+        const warning =
+          potential
+            ? ` · ${potential} potential finding${potential === 1 ? "" : "s"}`
+            : "";
+
+        return `
+          <details class="service-scripts">
+            <summary>
+              ${items.length} NSE script result${items.length === 1 ? "" : "s"}${warning}
+            </summary>
+            ${scriptBlocks(items)}
+          </details>`;
+      }
+
       function renderDeepDive(result) {
         let host = result?.hosts?.[0];
         if (!host) {
@@ -1699,13 +1804,13 @@
               ]
                 .filter(Boolean)
                 .join(" · ");
-              return `<tr><td>${esc(port.port + "/" + port.protocol)}</td><td>${esc(service || "Unknown")}${scriptBlocks(port.scripts)}</td></tr>`;
+              return `<tr><td>${esc(port.port + "/" + port.protocol)}</td><td><strong>${esc(service || "Unknown")}</strong>${serviceScriptSummary(port.scripts)}</td></tr>`;
             })
             .join("");
         document.querySelector("#deepStatus").textContent =
           `${result.profile_name} completed in ${Number(result.elapsed_seconds || 0).toFixed(1)} seconds`;
         document.querySelector("#deepResults").innerHTML =
-          `<div class="deep-summary"><div class="channel"><span>IP address</span><b>${esc(host.ip)}</b></div><div class="channel"><span>Hostname</span><b>${esc(hostname)}</b></div><div class="channel"><span>MAC / Vendor</span><b>${esc([host.mac, host.vendor].filter(Boolean).join(" · ") || "—")}</b></div><div class="channel"><span>Wireless match</span><b>${esc(wireless)}</b></div></div><p class="section-title">OPEN SERVICES</p><table class="drawer-table"><thead><tr><th>Port</th><th>Service and script results</th></tr></thead><tbody>${portRows || '<tr><td colspan="2">No open TCP ports found.</td></tr>'}</tbody></table>${host.scripts?.length ? `<p class="section-title" style="margin-top: 16px">HOST SCRIPT RESULTS</p>${scriptBlocks(host.scripts)}` : ""}${result.recording ? `<a href="/api/recordings/${encodeURIComponent(result.recording)}"><button>Download JSON Result</button></a>` : ""}`;
+          `<div class="deep-summary"><div class="channel"><span>IP address</span><b>${esc(host.ip)}</b></div><div class="channel"><span>Hostname</span><b>${esc(hostname)}</b></div><div class="channel"><span>MAC / Vendor</span><b>${esc([host.mac, host.vendor].filter(Boolean).join(" · ") || "—")}</b></div><div class="channel"><span>Wireless match</span><b>${esc(wireless)}</b></div></div><p class="section-title">OPEN SERVICES</p><table class="drawer-table"><thead><tr><th>Port</th><th>Service</th></tr></thead><tbody>${portRows || '<tr><td colspan="2">No open TCP ports found.</td></tr>'}</tbody></table>${host.scripts?.length ? `<p class="section-title" style="margin-top: 16px">HOST SCRIPT RESULTS</p>${scriptBlocks(host.scripts)}` : ""}${result.recording ? `<a href="/api/recordings/${encodeURIComponent(result.recording)}"><button>Download JSON Result</button></a>` : ""}`;
         openDeepDrawer();
       }
       async function runDeepDive() {
