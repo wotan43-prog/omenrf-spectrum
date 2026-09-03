@@ -203,6 +203,120 @@
         gap: 8px;
         margin-bottom: 12px;
       }
+      .identity-grid {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 10px;
+        margin: 8px 0 10px;
+      }
+
+      .identity-card {
+        border: 1px solid #263136;
+        padding: 12px;
+        background: rgba(255,255,255,0.015);
+      }
+
+      .identity-card.correlated {
+        border-color: rgba(103,245,181,0.45);
+      }
+
+      .identity-card span {
+        display: block;
+        color: var(--muted);
+        font-size: 10px;
+        letter-spacing: .09em;
+        margin-bottom: 6px;
+      }
+
+      .identity-card strong {
+        display: block;
+        color: var(--green);
+        margin-bottom: 5px;
+        overflow-wrap: anywhere;
+      }
+
+      .identity-card small {
+        color: var(--muted);
+        overflow-wrap: anywhere;
+      }
+
+      .correlation-note {
+        border-left: 3px solid var(--green);
+        padding: 7px 10px;
+        margin-bottom: 12px;
+        color: var(--muted);
+        font-size: 10px;
+        letter-spacing: .05em;
+      }
+
+      .findings-disclaimer {
+        margin-bottom: 10px;
+      }
+
+      .findings-list {
+        display: grid;
+        gap: 7px;
+      }
+
+      .finding {
+        border: 1px solid #263136;
+        padding: 9px 10px;
+        background: rgba(255,255,255,0.012);
+      }
+
+      .finding-head {
+        display: flex;
+        align-items: center;
+        gap: 7px;
+      }
+
+      .finding-head strong {
+        flex: 1;
+      }
+
+      .finding-head > span:last-child {
+        color: var(--muted);
+        font-size: 11px;
+      }
+
+      .finding-text {
+        color: var(--muted);
+        font-size: 11px;
+        margin-top: 6px;
+        line-height: 1.45;
+      }
+
+      .finding-badge {
+        display: inline-block;
+        border: 1px solid currentColor;
+        padding: 2px 5px;
+        font-size: 9px;
+        font-weight: 700;
+        letter-spacing: .07em;
+      }
+
+      .finding-potential {
+        color: #ffc857;
+      }
+
+      .finding-review {
+        color: #e1a85b;
+      }
+
+      .finding-reference {
+        color: #8ab6c1;
+      }
+
+      .finding-info {
+        color: var(--green);
+      }
+
+      @media (max-width: 720px) {
+        .identity-grid {
+          grid-template-columns: 1fr;
+        }
+      }
+
       .service-scripts,
       .nse-result {
         margin-top: 7px;
@@ -1782,37 +1896,312 @@
           </details>`;
       }
 
+      function serviceFinding(port) {
+        const number = Number(port.port);
+        const service = String(port.service || "").toLowerCase();
+        const product = String(port.product || "").toLowerCase();
+
+        const scripts = port.scripts || [];
+        const hasVulners = scripts.some((x) => x.id === "vulners");
+        const hasVulnerable = scripts.some((x) =>
+          /VULNERABLE:/i.test(x.output || "")
+        );
+
+        let level = "info";
+        let title = "";
+        let text = "";
+
+        if ([21, 23].includes(number)) {
+          level = "review";
+          title = number === 21 ? "FTP service exposed" : "Telnet service exposed";
+          text =
+            number === 21
+              ? "Clear-text authentication may be possible depending on server configuration."
+              : "Telnet is an unencrypted remote-access protocol and should normally be replaced by SSH.";
+        } else if (number === 22 || service.includes("ssh")) {
+          title = "Remote administration";
+          text = "SSH is available on this host. Expected on managed Linux and appliance systems.";
+        } else if ([80, 443, 8080, 8443].includes(number) ||
+                   service.includes("http")) {
+          title = "Web service";
+          text = "HTTP administration or application service is reachable from the local network.";
+        } else if ([139, 445].includes(number) ||
+                   service.includes("netbios") ||
+                   service.includes("microsoft-ds") ||
+                   product.includes("samba")) {
+          level = "review";
+          title = "SMB file sharing";
+          text = "Windows/Samba file-sharing services are exposed to the local subnet.";
+        } else if ([111, 2049].includes(number) ||
+                   service.includes("rpcbind") ||
+                   service.includes("nfs")) {
+          level = "review";
+          title = "NFS / RPC service";
+          text = "Unix network-file services are reachable. Confirm exports and permissions are intentional.";
+        } else if ([3306, 5432, 1433, 1521, 27017, 6379].includes(number)) {
+          level = "review";
+          title = "Database service";
+          text = "A database listener is reachable from the local network.";
+        } else if ([3389, 5900, 5901].includes(number)) {
+          level = "review";
+          title = "Remote desktop";
+          text = "Interactive remote-desktop service is reachable.";
+        } else {
+          title = `${port.port}/${port.protocol} ${port.service || "service"}`;
+          text = "Open network service detected.";
+        }
+
+        if (hasVulnerable) {
+          level = "potential";
+          text +=
+            " An NSE script reported a potential vulnerability. Treat this as a lead requiring validation.";
+        } else if (hasVulners) {
+          if (level === "info") level = "reference";
+          text +=
+            " Vulnerability references were returned for the detected product/version; they are not confirmed findings.";
+        }
+
+        return { level, title, text, port: number };
+      }
+
+      function buildFindings(host) {
+        const ports = (host.ports || []).filter((port) => port.state === "open");
+        const findings = ports.map(serviceFinding);
+
+        const rank = {
+          potential: 0,
+          review: 1,
+          reference: 2,
+          info: 3
+        };
+
+        return findings.sort(
+          (a, b) =>
+            (rank[a.level] ?? 9) - (rank[b.level] ?? 9) ||
+            a.port - b.port
+        );
+      }
+
+      function findingBadge(level) {
+        const labels = {
+          potential: "POTENTIAL",
+          review: "REVIEW",
+          reference: "REFERENCE",
+          info: "INFO"
+        };
+
+        return `<span class="finding-badge finding-${esc(level)}">${labels[level] || "INFO"}</span>`;
+      }
+
+      function renderFindings(host) {
+        const findings = buildFindings(host);
+
+        if (!findings.length)
+          return `<p class="label">No open-service findings.</p>`;
+
+        return `
+          <div class="findings-list">
+            ${findings.map((finding) => `
+              <div class="finding">
+                <div class="finding-head">
+                  ${findingBadge(finding.level)}
+                  <strong>${esc(finding.title)}</strong>
+                  <span>${esc(finding.port + "/tcp")}</span>
+                </div>
+                <div class="finding-text">${esc(finding.text)}</div>
+              </div>
+            `).join("")}
+          </div>`;
+      }
+
+      function renderHostIdentity(host) {
+        const match = host.wireless_match;
+
+        const macVendor =
+          [host.mac, host.vendor].filter(Boolean).join(" · ") || "—";
+
+        if (!match) {
+          return `
+            <div class="identity-grid">
+              <div class="identity-card">
+                <span>NETWORK IDENTITY</span>
+                <strong>${esc(host.ip || "—")}</strong>
+                <small>${esc(macVendor)}</small>
+              </div>
+
+              <div class="identity-card">
+                <span>WIRELESS CORRELATION</span>
+                <strong>No exact MAC match</strong>
+                <small>
+                  The Ethernet/IP identity was not observed as the same
+                  802.11 MAC address.
+                </small>
+              </div>
+            </div>`;
+        }
+
+        const wirelessName =
+          match.ssid ||
+          match.bssid ||
+          "Observed wireless device";
+
+        const signal =
+          match.rssi == null
+            ? "Signal —"
+            : `${Number(match.rssi).toFixed(0)} dBm`;
+
+        const channel =
+          match.channel == null
+            ? ""
+            : ` · CH ${match.channel}`;
+
+        const freq =
+          match.freq == null
+            ? ""
+            : ` · ${match.freq} MHz`;
+
+        return `
+          <div class="identity-grid">
+            <div class="identity-card correlated">
+              <span>NETWORK IDENTITY</span>
+              <strong>${esc(host.ip || "—")}</strong>
+              <small>${esc(macVendor)}</small>
+            </div>
+
+            <div class="identity-card correlated">
+              <span>WIRELESS CORRELATION</span>
+              <strong>${esc(wirelessName)}</strong>
+              <small>
+                ${esc(match.bssid || host.mac || "—")}
+                · ${esc(signal + channel + freq)}
+              </small>
+            </div>
+          </div>
+
+          <div class="correlation-note">
+            EXACT MAC CORRELATION · IP/network and 802.11 observations
+            appear to describe the same interface.
+          </div>`;
+      }
+
       function renderDeepDive(result) {
-        let host = result?.hosts?.[0];
+        const host = result?.hosts?.[0];
+
         if (!host) {
           document.querySelector("#deepResults").innerHTML =
             '<p class="label">The selected host did not respond.</p>';
           return;
         }
-        let hostname = host.hostnames?.[0] || "—",
-          wireless = host.wireless_match
-            ? `${host.wireless_match.ssid || host.wireless_match.bssid}${host.wireless_match.rssi == null ? "" : " · " + host.wireless_match.rssi + " dBm"}`
-            : "No exact MAC correlation",
-          ports = (host.ports || []).filter((port) => port.state === "open"),
-          portRows = ports
-            .map((port) => {
-              let service = [
-                port.service,
-                port.product,
-                port.version,
-                port.extra,
-              ]
-                .filter(Boolean)
-                .join(" · ");
-              return `<tr><td>${esc(port.port + "/" + port.protocol)}</td><td><strong>${esc(service || "Unknown")}</strong>${serviceScriptSummary(port.scripts)}</td></tr>`;
-            })
-            .join("");
+
+        const hostname = host.hostnames?.[0] || "—";
+        const ports =
+          (host.ports || []).filter((port) => port.state === "open");
+
+        const portRows = ports
+          .map((port) => {
+            const service = [
+              port.service,
+              port.product,
+              port.version,
+              port.extra
+            ]
+              .filter(Boolean)
+              .join(" · ");
+
+            return `
+              <tr>
+                <td>${esc(port.port + "/" + port.protocol)}</td>
+                <td>
+                  <strong>${esc(service || "Unknown")}</strong>
+                  ${serviceScriptSummary(port.scripts)}
+                </td>
+              </tr>`;
+          })
+          .join("");
+
         document.querySelector("#deepStatus").textContent =
-          `${result.profile_name} completed in ${Number(result.elapsed_seconds || 0).toFixed(1)} seconds`;
-        document.querySelector("#deepResults").innerHTML =
-          `<div class="deep-summary"><div class="channel"><span>IP address</span><b>${esc(host.ip)}</b></div><div class="channel"><span>Hostname</span><b>${esc(hostname)}</b></div><div class="channel"><span>MAC / Vendor</span><b>${esc([host.mac, host.vendor].filter(Boolean).join(" · ") || "—")}</b></div><div class="channel"><span>Wireless match</span><b>${esc(wireless)}</b></div></div><p class="section-title">OPEN SERVICES</p><table class="drawer-table"><thead><tr><th>Port</th><th>Service</th></tr></thead><tbody>${portRows || '<tr><td colspan="2">No open TCP ports found.</td></tr>'}</tbody></table>${host.scripts?.length ? `<p class="section-title" style="margin-top: 16px">HOST SCRIPT RESULTS</p>${scriptBlocks(host.scripts)}` : ""}${result.recording ? `<a href="/api/recordings/${encodeURIComponent(result.recording)}"><button>Download JSON Result</button></a>` : ""}`;
+          `${result.profile_name} completed in ` +
+          `${Number(result.elapsed_seconds || 0).toFixed(1)} seconds`;
+
+        document.querySelector("#deepResults").innerHTML = `
+          ${renderHostIdentity(host)}
+
+          <div class="deep-summary">
+            <div class="channel">
+              <span>HOSTNAME</span>
+              <b>${esc(hostname)}</b>
+            </div>
+
+            <div class="channel">
+              <span>OPEN TCP SERVICES</span>
+              <b>${ports.length}</b>
+            </div>
+
+            <div class="channel">
+              <span>MAC</span>
+              <b>${esc(host.mac || "—")}</b>
+            </div>
+
+            <div class="channel">
+              <span>VENDOR</span>
+              <b>${esc(host.vendor || "—")}</b>
+            </div>
+          </div>
+
+          <p class="section-title">FINDINGS</p>
+
+          <p class="label findings-disclaimer">
+            Findings are interpretations of observed services and NSE
+            output. Potential vulnerability references are not confirmed
+            vulnerabilities.
+          </p>
+
+          ${renderFindings(host)}
+
+          <p class="section-title" style="margin-top:18px">
+            OPEN SERVICES
+          </p>
+
+          <table class="drawer-table">
+            <thead>
+              <tr>
+                <th>Port</th>
+                <th>Service</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${
+                portRows ||
+                '<tr><td colspan="2">No open TCP ports found.</td></tr>'
+              }
+            </tbody>
+          </table>
+
+          ${
+            host.scripts?.length
+              ? `
+                <p class="section-title" style="margin-top:16px">
+                  HOST SCRIPT RESULTS
+                </p>
+                ${scriptBlocks(host.scripts)}
+              `
+              : ""
+          }
+
+          ${
+            result.recording
+              ? `
+                <a href="/api/recordings/${encodeURIComponent(result.recording)}">
+                  <button>Download JSON Result</button>
+                </a>
+              `
+              : ""
+          }
+        `;
+
         openDeepDrawer();
       }
+
       async function runDeepDive() {
         if (!selectedHostIp) return;
         try {
