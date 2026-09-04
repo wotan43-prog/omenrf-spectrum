@@ -1352,7 +1352,7 @@
             ? "ERROR: " + x.error
             : x.recording
               ? "● SPECTRUM RECORDING"
-              : "DBx3 + PACKET RADIO ONLINE";
+              : "";
           document.querySelector("#status").className = x.error
             ? "status error"
             : x.recording
@@ -2609,6 +2609,10 @@
     border-color: rgba(239,83,80,.65);
 }
 
+#status:empty {
+    display: none;
+}
+
 #omenrf-radio-health.overall-ok {
     border-color: rgba(32,196,107,.42);
 }
@@ -2635,6 +2639,21 @@
 
 <div id="omenrf-radio-health">
     <div class="health-label">RADIOS</div>
+
+    <div id="omenrf-dbx3-radio"
+         class="omenrf-radio-box">
+        <div class="omenrf-radio-title">
+            DBx3
+        </div>
+
+        <div class="omenrf-radio-state">
+            CHECKING
+        </div>
+
+        <div class="omenrf-radio-detail">
+            Wi-Spy DBx3
+        </div>
+    </div>
 
     <div id="omenrf-capture-radio"
          class="omenrf-radio-box">
@@ -2684,6 +2703,9 @@ function omenChannelFrequency(channel) {
 (() => {
     const root =
         document.getElementById("omenrf-radio-health");
+
+    const dbx3 =
+        document.getElementById("omenrf-dbx3-radio");
 
     const capture =
         document.getElementById("omenrf-capture-radio");
@@ -2886,6 +2908,12 @@ function omenChannelFrequency(channel) {
             const s =
                 data.scan || {};
 
+            const services =
+                data.services || {};
+
+            const dbx3OK =
+                services.spectrum === "active";
+
             const captureOK =
                 !!c.present &&
                 !!c.capture_process;
@@ -2941,6 +2969,13 @@ function omenChannelFrequency(channel) {
             .join(" · ");
 
             updateBox(
+                dbx3,
+                dbx3OK,
+                dbx3OK ? "ONLINE" : "FAULT",
+                "Wi-Spy DBx3"
+            );
+
+            updateBox(
                 capture,
                 captureOK,
                 captureOK ? "ONLINE" : "FAULT",
@@ -2965,6 +3000,13 @@ function omenChannelFrequency(channel) {
             );
 
         } catch (err) {
+            updateBox(
+                dbx3,
+                false,
+                "NO DATA",
+                "Wi-Spy DBx3"
+            );
+
             updateBox(
                 capture,
                 false,
