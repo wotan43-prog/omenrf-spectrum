@@ -317,6 +317,7 @@ class NetworkScanner:
                     "bssid": match.get("bssid") or match.get("mac"),
                     "ssid": match.get("ssid"),
                     "ap_name": match.get("ap_name") or match.get("device_name"),
+                    "ap_name_source": match.get("ap_name_source"),
                     "rssi": match.get("rssi"),
                     "roles": match.get("roles", []),
                 } if match else None

@@ -6,7 +6,7 @@ from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import patch
 
-from capture import PacketRadio, parse_frame_metadata
+from capture import PacketRadio, parse_frame_metadata, parse_ap_identity_row
 
 
 class CaptureMetadataTests(unittest.TestCase):
@@ -49,6 +49,18 @@ class CaptureMetadataTests(unittest.TestCase):
         self.assertEqual(frame["frequency_mhz"], 2412)
         self.assertEqual(frame["length"], 128)
         self.assertNotIn("raw", frame)
+
+    def test_parses_vendor_specific_ap_name(self):
+        row = "aa:bb:cc:dd:ee:ff\tCORP-AP-02\t\t\t\t\t\t\t"
+        item = parse_ap_identity_row(row)
+        self.assertEqual(item["ap_name"], "CORP-AP-02")
+        self.assertEqual(item["ap_name_source"], "Aruba")
+
+    def test_wps_device_name_is_fallback_identity(self):
+        row = "aa:bb:cc:dd:ee:ff\t\t\t\t\t\t\t\tAXE5400 Wi-Fi 6E Router"
+        item = parse_ap_identity_row(row)
+        self.assertEqual(item["ap_name"], "AXE5400 Wi-Fi 6E Router")
+        self.assertEqual(item["ap_name_source"], "WPS")
 
     def test_frame_snapshot_filters_and_caps_results(self):
         radio = PacketRadio.__new__(PacketRadio)

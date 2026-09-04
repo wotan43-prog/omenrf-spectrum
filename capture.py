@@ -15,6 +15,27 @@ FRAME_KINDS = (
     ('Association Request', 'assoc'),
 )
 
+AP_NAME_FIELDS = (
+    ('wlan.vs.aruba.ap_name', 'Aruba'),
+    ('wlan.vs.extreme.ap_name', 'Extreme'),
+    ('wlan.vs.mist.apname', 'Mist'),
+    ('wlan.vs.ruckus.apname', 'Ruckus'),
+    ('wlan.vs.alcatel.apname', 'Alcatel-Lucent'),
+    ('wlan.vs.fortinet.system.ap_name', 'Fortinet'),
+    ('wlan.vs.arista.ap_name', 'Arista'),
+    ('wps.device_name', 'WPS'),
+)
+
+def parse_ap_identity_row(line):
+    parts=line.rstrip('\n').split('\t')
+    if not parts or not re.fullmatch(r'[0-9a-f:]{17}', parts[0], re.I): return None
+    values=(parts[1:] + [''] * len(AP_NAME_FIELDS))[:len(AP_NAME_FIELDS)]
+    for (_, source), value in zip(AP_NAME_FIELDS, values):
+        value=value.strip().strip('\"')
+        if value and value != '<MISSING>':
+            return {'bssid':parts[0].lower(),'ap_name':value,'ap_name_source':source}
+    return None
+
 
 def parse_frame_metadata(line, frame_id, channel, now=None):
     """Extract bounded 802.11 header metadata without retaining packet payload text."""
@@ -51,8 +72,10 @@ class PacketRadio:
         self.times=deque(maxlen=10000); self.frames=deque(maxlen=1000); self.frame_id=0
         self.types=Counter(); self.total=0; self.channel=6; self.width=20
         self.last_rssi=None; self.error=None; self.aps={}; self.devices={}; self.discovery=[]; self.scan_error=None; self.scan_time=None; self.recording=None
+        self.ap_identities={}
         self.recording_path=None; self.recording_started=None
         threading.Thread(target=self._worker,daemon=True).start()
+        threading.Thread(target=self._identity_worker,daemon=True).start()
 
     def _kind(self,line):
         for key,label in FRAME_KINDS:
@@ -89,24 +112,53 @@ class PacketRadio:
             except Exception as e: self.error=str(e)
             time.sleep(1)
 
+    def _identity_worker(self):
+        fields=[]
+        for name,_ in AP_NAME_FIELDS: fields += ['-e',name]
+        while self.running:
+            try:
+                cmd=['tshark','-l','-i',self.iface,'-a','duration:4',
+                     '-Y','wlan.fc.type_subtype == 8 || wlan.fc.type_subtype == 5',
+                     '-T','fields','-E','separator=\t','-e','wlan.bssid',*fields]
+                out=subprocess.run(cmd,capture_output=True,text=True,timeout=8,check=False).stdout
+                found={}
+                for line in out.splitlines():
+                    item=parse_ap_identity_row(line)
+                    if item: found[item['bssid']]=item
+                if found:
+                    with self.lock: self.ap_identities.update(found)
+            except Exception:
+                pass
+            for _ in range(26):
+                if not self.running: break
+                time.sleep(1)
+
     def state(self):
         now=time.time()
         with self.lock:
             while self.times and self.times[0] < now-10: self.times.popleft()
             fps=sum(t>=now-1 for t in self.times)
             discovered={item.get('bssid'):item for item in self.discovery if item.get('bssid')}
+            discovery=[]
+            for item in self.discovery:
+                merged_item=dict(item); identity=self.ap_identities.get(item.get('bssid')) or {}
+                if identity:
+                    merged_item['ap_name']=identity.get('ap_name') or merged_item.get('ap_name')
+                    merged_item['ap_name_source']=identity.get('ap_name_source')
+                discovery.append(merged_item)
             aps=[]
             for ap in self.aps.values():
                 merged=dict(ap)
-                match=discovered.get(ap.get('bssid'))
-                if match:
-                    merged['ap_name']=match.get('ap_name') or match.get('device_name')
-                    if not merged.get('ssid'): merged['ssid']=match.get('ssid') or ''
+                identity=self.ap_identities.get(ap.get('bssid')) or {}
+                match=discovered.get(ap.get('bssid')) or {}
+                merged['ap_name']=identity.get('ap_name') or match.get('ap_name') or match.get('device_name')
+                merged['ap_name_source']=identity.get('ap_name_source') or ('Active scan' if merged.get('ap_name') else None)
+                if not merged.get('ssid'): merged['ssid']=match.get('ssid') or ''
                 aps.append(merged)
             return {'interface':self.iface,'scan_interface':self.scan_iface,'channel':self.channel,'width':self.width,'fps':fps,'total':self.total,
                     'types':dict(self.types),'rssi':self.last_rssi,'error':self.error,'recording':self.recording,
                     'aps':sorted(aps,key=lambda x:x['frames'],reverse=True)[:20],
-                    'discovery':self.discovery[:30],'scan_error':self.scan_error,'scan_time':self.scan_time}
+                    'discovery':discovery[:30],'scan_error':self.scan_error,'scan_time':self.scan_time}
 
     def wireless_snapshot(self):
         with self.lock:
@@ -114,9 +166,10 @@ class PacketRadio:
             discovered={item.get('bssid'):item for item in self.discovery if item.get('bssid')}
             for mac,ap in self.aps.items():
                 device=devices.setdefault(mac,{'mac':mac,'frames':0,'rssi':None,'roles':['BSSID'],'last_seen':None})
-                match=discovered.get(mac) or {}
+                match=discovered.get(mac) or {}; identity=self.ap_identities.get(mac) or {}
                 device['ssid']=ap.get('ssid') or match.get('ssid'); device['bssid']=mac
-                device['ap_name']=match.get('ap_name') or match.get('device_name')
+                device['ap_name']=identity.get('ap_name') or match.get('ap_name') or match.get('device_name')
+                device['ap_name_source']=identity.get('ap_name_source') or ('Active scan' if device.get('ap_name') else None)
                 if ap.get('rssi') is not None: device['rssi']=ap['rssi']
             return list(devices.values())
 
