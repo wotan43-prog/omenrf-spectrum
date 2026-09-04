@@ -94,17 +94,29 @@ class PacketRadio:
         with self.lock:
             while self.times and self.times[0] < now-10: self.times.popleft()
             fps=sum(t>=now-1 for t in self.times)
+            discovered={item.get('bssid'):item for item in self.discovery if item.get('bssid')}
+            aps=[]
+            for ap in self.aps.values():
+                merged=dict(ap)
+                match=discovered.get(ap.get('bssid'))
+                if match:
+                    merged['ap_name']=match.get('ap_name') or match.get('device_name')
+                    if not merged.get('ssid'): merged['ssid']=match.get('ssid') or ''
+                aps.append(merged)
             return {'interface':self.iface,'scan_interface':self.scan_iface,'channel':self.channel,'width':self.width,'fps':fps,'total':self.total,
                     'types':dict(self.types),'rssi':self.last_rssi,'error':self.error,'recording':self.recording,
-                    'aps':sorted(self.aps.values(),key=lambda x:x['frames'],reverse=True)[:20],
+                    'aps':sorted(aps,key=lambda x:x['frames'],reverse=True)[:20],
                     'discovery':self.discovery[:30],'scan_error':self.scan_error,'scan_time':self.scan_time}
 
     def wireless_snapshot(self):
         with self.lock:
             devices={mac:{**device,'roles':list(device['roles'])} for mac,device in self.devices.items()}
+            discovered={item.get('bssid'):item for item in self.discovery if item.get('bssid')}
             for mac,ap in self.aps.items():
                 device=devices.setdefault(mac,{'mac':mac,'frames':0,'rssi':None,'roles':['BSSID'],'last_seen':None})
-                device['ssid']=ap.get('ssid'); device['bssid']=mac
+                match=discovered.get(mac) or {}
+                device['ssid']=ap.get('ssid') or match.get('ssid'); device['bssid']=mac
+                device['ap_name']=match.get('ap_name') or match.get('device_name')
                 if ap.get('rssi') is not None: device['rssi']=ap['rssi']
             return list(devices.values())
 
@@ -187,12 +199,16 @@ class PacketRadio:
                 m=re.match(r'BSS ([0-9a-f:]{17})',line.strip(),re.I)
                 if m:
                     if cur: found.append(cur)
-                    cur={'bssid':m.group(1).lower(),'ssid':'','signal':None,'freq':None}
+                    cur={'bssid':m.group(1).lower(),'ssid':'','signal':None,'freq':None,'ap_name':None,'device_name':None}
                 elif cur:
                     s=line.strip()
                     if s.startswith('SSID:'): cur['ssid']=s[5:].strip()
                     elif s.startswith('signal:'): cur['signal']=float(s.split()[1])
                     elif s.startswith('freq:'): cur['freq']=int(float(s.split()[1]))
+                    elif 'ap name:' in s.lower():
+                        cur['ap_name']=s[s.lower().index('ap name:') + len('ap name:'):].strip() or None
+                    elif 'device name:' in s.lower():
+                        cur['device_name']=s[s.lower().index('device name:') + len('device name:'):].strip() or None
             if cur: found.append(cur)
             with self.lock:
                 self.discovery=sorted(found,key=lambda x:x['signal'] or -999,reverse=True)

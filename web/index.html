@@ -1607,7 +1607,7 @@
             .slice(0, 8)
             .map(
               (a) =>
-                `<div class="channel inspectable" data-frame-mac="${esc(a.bssid)}"><div class="tile-head"><span class="tile-name" title="${esc(a.ssid || a.bssid)}">${esc(a.ssid || "Hidden SSID")}</span><b>${a.rssi == null ? "—" : a.rssi + " dBm"}</b></div><small class="tile-meta">${esc(a.bssid)} · ${a.frames} frames</small></div>`,
+                `<div class="channel inspectable" data-frame-mac="${esc(a.bssid)}"><div class="tile-head"><span class="tile-name" title="${esc(a.ap_name || a.ssid || a.bssid)}">${esc(a.ap_name || a.ssid || "Hidden SSID")}</span><b>${a.rssi == null ? "—" : a.rssi + " dBm"}</b></div><small class="tile-meta">${a.ap_name && a.ssid ? esc(a.ssid) + " · " : ""}${esc(a.bssid)} · ${a.frames} frames</small></div>`,
             )
             .join("");
           document
@@ -1621,7 +1621,7 @@
             .slice(0, 12)
             .map(
               (a) =>
-                `<div class="channel"><div class="tile-head"><span class="tile-name" title="${esc(a.ssid || a.bssid)}">${esc(a.ssid || "Hidden SSID")}</span><b>${a.signal == null ? "—" : a.signal + " dBm"}</b></div><small class="tile-meta">${esc(a.bssid)} · ${a.freq || "—"} MHz</small></div>`,
+                `<div class="channel"><div class="tile-head"><span class="tile-name" title="${esc(a.ap_name || a.device_name || a.ssid || a.bssid)}">${esc(a.ap_name || a.device_name || a.ssid || "Hidden SSID")}</span><b>${a.signal == null ? "—" : a.signal + " dBm"}</b></div><small class="tile-meta">${(a.ap_name || a.device_name) && a.ssid ? esc(a.ssid) + " · " : ""}${esc(a.bssid)} · ${a.freq || "—"} MHz</small></div>`,
             )
             .join("");
           document.querySelector("#scanStatus").textContent = x.scan_error

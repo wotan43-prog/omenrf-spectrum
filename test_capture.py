@@ -16,6 +16,7 @@ class CaptureMetadataTests(unittest.TestCase):
         freq: 5180
         signal: -52.50 dBm
         SSID: Omen Lab
+        WPS:     * Device name: CORP-AP-02
         """)
         radio = PacketRadio.__new__(PacketRadio)
         radio.scan_iface = "wlan2"
@@ -28,6 +29,8 @@ class CaptureMetadataTests(unittest.TestCase):
         self.assertEqual(run.call_args.args[0], ["iw", "dev", "wlan2", "scan"])
         self.assertEqual(results[0]["ssid"], "Omen Lab")
         self.assertEqual(results[0]["signal"], -52.5)
+        self.assertEqual(results[0]["device_name"], "CORP-AP-02")
+        self.assertIsNone(results[0]["ap_name"])
         self.assertIsNotNone(radio.scan_time)
 
     def test_parses_header_metadata_without_raw_payload(self):
