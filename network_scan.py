@@ -39,9 +39,14 @@ PROFILES = {
     },
     "deep_host": {
         "name": "TCP Deep Dive",
-        "description": "Detailed TCP service assessment with Nmap's safe scripts for one local host.",
-        "args": ("-PR", "-sT", "-sV", "--script", "safe", "--top-ports", "1000", "-T3", "--max-retries", "2", "--host-timeout", "120s"),
-        "timeout": 180,
+        "description": "Fast single-host assessment of common TCP services with targeted identification.",
+        "args": (
+            "-PR", "-sT", "-sV", "--version-light",
+            "--script", "banner,http-title,http-headers,ssl-cert,ssh-hostkey",
+            "--top-ports", "200", "-T4", "--max-retries", "1",
+            "--host-timeout", "45s",
+        ),
+        "timeout": 75,
         "max_hosts": 1,
     },
     "udp_host": {

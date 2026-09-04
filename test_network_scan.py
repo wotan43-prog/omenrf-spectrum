@@ -35,6 +35,14 @@ class TargetValidationTests(unittest.TestCase):
             validate_target("192.168.50.0/24", ROUTES, 1)
 
 
+    def test_deep_host_profile_is_bounded_for_interactive_use(self):
+        args = PROFILES["deep_host"]["args"]
+        self.assertEqual(args[args.index("--top-ports") + 1], "200")
+        self.assertIn("--version-light", args)
+        self.assertNotIn("safe", args)
+        self.assertEqual(args[args.index("--host-timeout") + 1], "45s")
+
+
 class XmlParsingTests(unittest.TestCase):
     def test_parses_host_vendor_and_service(self):
         xml = """<?xml version="1.0"?>
