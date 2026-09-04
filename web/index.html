@@ -1169,7 +1169,10 @@
           w = T.clientWidth,
           ww = W.clientWidth,
           h = T.clientHeight,
-          pad = 28;
+          pad = 34,
+          plotLeft = 44,
+          plotRight = 8,
+          plotWidth = w - plotLeft - plotRight;
         if (s.band != lastBand) {
           peak = [];
           avg = [];
@@ -1190,21 +1193,22 @@
         for (let db = -100; db <= -20; db += 20) {
           let y = ((-10 - db) / 110) * (h - pad);
           tc.beginPath();
-          tc.moveTo(0, y);
-          tc.lineTo(w, y);
+          tc.moveTo(plotLeft, y);
+          tc.lineTo(w - plotRight, y);
           tc.stroke();
           tc.fillText(db + " dBm", 6, y - 4);
         }
         let chans = wifiChannels(s);
         for (let ch of chans) {
-          let x = ((ch.c - s.start_mhz) / (s.end_mhz - s.start_mhz)) * w;
+          let x = plotLeft + ((ch.c - s.start_mhz) / (s.end_mhz - s.start_mhz)) * plotWidth;
           tc.strokeStyle = "#1e3b3b";
           tc.beginPath();
           tc.moveTo(x, 0);
           tc.lineTo(x, h - pad);
           tc.stroke();
-          tc.fillStyle = "#769096";
-          tc.fillText(ch.n, x - 6, h - 7);
+          tc.fillStyle = "#9aadb5";
+          tc.font = "11px system-ui";
+          tc.fillText(ch.n, x - 4, h - 7);
           let vals = v.filter((_, i) => {
             let f =
               s.start_mhz + (i / (v.length - 1)) * (s.end_mhz - s.start_mhz);
@@ -1216,19 +1220,20 @@
           occ[ch.n] =
             occ[ch.n] === undefined ? instant : occ[ch.n] * 0.9 + instant * 0.1;
         }
-        tc.fillStyle = "#8b9ba3";
+        tc.fillStyle = "#667b84";
+        tc.font = "10px system-ui";
         for (let i = 0; i <= 4; i++) {
           let f = s.start_mhz + ((s.end_mhz - s.start_mhz) * i) / 4;
           tc.fillText(
             f.toFixed(0) + " MHz",
-            Math.min(w - 58, (w * i) / 4 + 2),
-            h - 20,
+            Math.min(w - 58, plotLeft + (plotWidth * i) / 4),
+            h - 22,
           );
         }
         function line(a, c, l) {
           tc.beginPath();
           a.forEach((x, i) => {
-            let X = (i / (a.length - 1)) * w,
+            let X = plotLeft + (i / (a.length - 1)) * plotWidth,
               Y = ((-10 - x) / 110) * (h - pad);
             i ? tc.lineTo(X, Y) : tc.moveTo(X, Y);
           });
