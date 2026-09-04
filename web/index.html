@@ -384,7 +384,7 @@
       .observation-heading {
         margin: 10px 0 6px;
       }
-      .observation-grid {
+      .channel-grid.observation-grid {
         display: grid;
         grid-template-columns: repeat(auto-fit, minmax(145px, 1fr));
       }
@@ -404,9 +404,11 @@
         text-overflow: ellipsis;
         white-space: nowrap;
       }
-      .tile-head b {
+      .observation-grid .tile-head b {
         float: none;
         flex: 0 0 auto;
+        white-space: nowrap;
+        font-size: 13px;
       }
       .tile-meta {
         display: block;
