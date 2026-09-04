@@ -54,6 +54,13 @@ class InvestigationManager:
                 self._write(session)
             return {"active": bool(self.active), "session": dict(session) if session else None}
 
+    def reset_site_state(self):
+        with self.lock:
+            if self.active:
+                raise RuntimeError("stop the active investigation before starting a new site")
+            self.last_session=None
+        return {"ok": True}
+
     def is_active(self):
         with self.lock:
             return bool(self.active)

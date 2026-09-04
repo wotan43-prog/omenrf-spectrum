@@ -190,6 +190,14 @@ class NetworkScanner:
         self.error = None
         self.history = []
 
+    def reset_site_state(self):
+        with self.lock:
+            if self.running:
+                raise RuntimeError("wait for the active network scan to finish")
+            self.last_result=None; self.last_inventory_result=None; self.last_deep_result=None
+            self.error=None; self.history.clear()
+        return {"ok": True}
+
     def state(self):
         try:
             routes = connected_private_routes()

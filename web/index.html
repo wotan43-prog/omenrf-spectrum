@@ -820,6 +820,7 @@
               <button id="pause">Freeze Display</button>
               <button id="record">Start Spectrum Recording</button>
               <button id="reset">Reset Peak Hold</button>
+              <button id="siteReset" title="Clear live spectrum, packet, AP, network-discovery, and investigation state. Saved recordings are preserved.">New Site / Clear Data</button>
             </div>
           </div>
           <div class="metrics">
@@ -1394,6 +1395,18 @@
       document.querySelector("#reset").onclick = () => {
         peak = [];
         post("/api/reset");
+      };
+      document.querySelector("#siteReset").onclick = async () => {
+        if (!confirm("Start fresh for a new site? This clears live spectrum history, packet/AP observations, discovery results, and prior investigation status. Saved recording files are preserved.")) return;
+        try {
+          let r = await fetch("/api/site/reset", {method:"POST"}), j = await r.json();
+          if (!r.ok) throw Error(j.error || r.statusText);
+          peak=[]; avg=[]; occ={}; count=0; lastSweep=null; window.ts=0;
+          tc.clearRect(0,0,T.clientWidth,T.clientHeight);
+          wc.clearRect(0,0,W.clientWidth,W.clientHeight);
+          document.querySelector("#count").textContent="0";
+          alert("New site ready. Live observations cleared; saved recordings preserved.");
+        } catch (e) { alert(e.message); }
       };
       document.querySelector("#pause").onclick = (e) => {
         frozen = !frozen;

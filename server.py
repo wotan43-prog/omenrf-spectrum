@@ -128,6 +128,18 @@ class Handler(SimpleHTTPRequestHandler):
         if p=='/api/reset':
             with lock: history.clear()
             return self.json({'ok':True})
+        if p=='/api/site/reset':
+            if investigation.is_active(): return self.json({'error':'stop the active investigation first'},409)
+            if state['recording']: return self.json({'error':'stop spectrum recording first'},409)
+            if radio.state().get('recording'): return self.json({'error':'stop packet recording first'},409)
+            if network_scanner.state().get('running'): return self.json({'error':'wait for the active network scan to finish'},409)
+            try:
+                with lock:
+                    history.clear(); state['latest']=None; state['error']=None
+                radio.reset_site_state(); network_scanner.reset_site_state(); investigation.reset_site_state()
+                return self.json({'ok':True,'recordings_preserved':True})
+            except RuntimeError as e: return self.json({'error':str(e)},409)
+            except Exception as e: return self.json({'error':str(e)},500)
         if p.startswith('/api/capture/tune/'):
             try:
                 _,ch,width=p.rsplit('/',2); return self.json(radio.tune(int(ch),int(width)))

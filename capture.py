@@ -133,6 +133,14 @@ class PacketRadio:
                 if not self.running: break
                 time.sleep(1)
 
+    def reset_site_state(self):
+        with self.lock:
+            self.times.clear(); self.frames.clear(); self.types.clear()
+            self.total=0; self.last_rssi=None; self.error=None
+            self.aps.clear(); self.devices.clear(); self.ap_identities.clear()
+            self.discovery=[]; self.scan_error=None; self.scan_time=None
+        return {"ok": True}
+
     def state(self):
         now=time.time()
         with self.lock:
