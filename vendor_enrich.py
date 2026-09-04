@@ -24,6 +24,7 @@ IPV4_RE = re.compile(
 def cached_mac_for_ip(ip):
     return acquire_mac(ip)
 
+@lru_cache(maxsize=2048)
 def enrich_mac(mac):
     r = lookup(mac)
 

@@ -74,8 +74,8 @@ def worker():
 class Handler(SimpleHTTPRequestHandler):
     def __init__(self,*a,**k): super().__init__(*a,directory=str(WEB),**k)
     def log_message(self,*a): pass
-    def json(self,obj,status=200):
-        obj=enrich_object(obj)
+    def json(self,obj,status=200,enrich=False):
+        if enrich: obj=enrich_object(obj)
         data=json.dumps(obj).encode(); self.send_response(status); self.send_header('Content-Type','application/json'); self.send_header('Cache-Control','no-store'); self.send_header('Content-Length',str(len(data))); self.end_headers(); self.wfile.write(data)
     def json_body(self):
         try: length=int(self.headers.get('Content-Length','0'))
@@ -95,15 +95,15 @@ class Handler(SimpleHTTPRequestHandler):
         parsed=urlparse(self.path); p=parsed.path; query=parse_qs(parsed.query)
         if p=='/api/state':
             with lock: self.json({'band':state['band'],'recording':state['recording'],'ranges':state['ranges'],'latest':state['latest'],'error':state['error']}); return
-        if p=='/api/capture/state': self.json(radio.state()); return
+        if p=='/api/capture/state': self.json(radio.state(),enrich=True); return
         if p=='/api/capture/frames':
             try: self.json(radio.frame_snapshot(query.get('after',['0'])[0],query.get('limit',['100'])[0],query.get('type',[''])[0],query.get('mac',[''])[0]))
             except (TypeError,ValueError) as e: self.json({'error':str(e)},400)
             return
-        if p=='/api/capture/devices': self.json({'devices':radio.device_snapshot()}); return
+        if p=='/api/capture/devices': self.json({'devices':radio.device_snapshot()},enrich=True); return
         if p=='/api/capture/files': self.json({'files':radio.recording_files()}); return
         if p=='/api/capture/download': return self.recording_download(query.get('path',[''])[0])
-        if p=='/api/nmap/state': self.json(network_scanner.state()); return
+        if p=='/api/nmap/state': self.json(network_scanner.state(),enrich=True); return
         if p=='/api/investigation/state': self.json(investigation.state()); return
         if p.startswith('/api/recordings/'):
             name=Path(p).name; target=(ROOT/'recordings'/name).resolve()
