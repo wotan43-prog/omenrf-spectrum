@@ -35,12 +35,18 @@ class TargetValidationTests(unittest.TestCase):
             validate_target("192.168.50.0/24", ROUTES, 1)
 
 
-    def test_deep_host_profile_is_bounded_for_interactive_use(self):
-        args = PROFILES["deep_host"]["args"]
-        self.assertEqual(args[args.index("--top-ports") + 1], "200")
-        self.assertIn("--version-light", args)
-        self.assertNotIn("safe", args)
-        self.assertEqual(args[args.index("--host-timeout") + 1], "45s")
+    def test_deep_host_profile_is_staged_for_interactive_use(self):
+        profile = PROFILES["deep_host"]
+        self.assertTrue(profile["staged"])
+        discovery = profile["discovery_args"]
+        probe = profile["probe_args"]
+        self.assertEqual(discovery[discovery.index("--top-ports") + 1], "1000")
+        self.assertNotIn("-sV", discovery)
+        self.assertNotIn("-sV", probe)
+        self.assertNotIn("safe", probe)
+        self.assertEqual(probe[probe.index("--script-timeout") + 1], "5s")
+        self.assertEqual(discovery[discovery.index("--host-timeout") + 1], "30s")
+
 
 
 class XmlParsingTests(unittest.TestCase):

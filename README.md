@@ -59,9 +59,9 @@ The POST body is JSON:
 {"profile":"quick","target":"192.168.1.0/24"}
 ```
 
-Valid profiles are `quick`, `inventory`, `services`, `deep_host`, and `udp_host`. Deep-host scans accept exactly one IPv4 address. TCP Deep Dive checks the 200 most common TCP ports, uses light version detection, and runs only targeted identification scripts to keep interactive scans responsive. Completed results are saved under `recordings/nmap-*.json`.
+Valid profiles are `quick`, `inventory`, `services`, `deep_host`, and `udp_host`. Deep-host scans accept exactly one IPv4 address and run in two stages: a fast 1000-port sweep followed by service identification only on ports found open. TCP Deep Dive first sweeps the 1000 most common TCP ports without service probing, then runs targeted protocol-identification scripts only against ports found open, avoiding slow blanket version probing. Completed results are saved under `recordings/nmap-*.json`.
 
-The dashboard keeps the most recent discovery/inventory result visible while a selected-host Deep Dive runs. Hostnames appear when Nmap discovers reverse-DNS names. Deep Dive results include open services, versions, wireless MAC correlation, and output from Nmap's fixed `safe` script category.
+The dashboard keeps the most recent discovery/inventory result visible while a selected-host Deep Dive runs. Hostnames appear when Nmap discovers reverse-DNS names. Deep Dive results include open services, protocol fingerprints, wireless MAC correlation, and output from a fixed targeted identification script set.
 
 ## Investigation-session API
 

@@ -39,14 +39,12 @@ PROFILES = {
     },
     "deep_host": {
         "name": "TCP Deep Dive",
-        "description": "Fast single-host assessment of common TCP services with targeted identification.",
-        "args": (
-            "-PR", "-sT", "-sV", "--version-light",
-            "--script", "banner,http-title,http-headers,ssl-cert,ssh-hostkey",
-            "--top-ports", "200", "-T4", "--max-retries", "1",
-            "--host-timeout", "45s",
-        ),
+        "description": "Two-stage single-host assessment: fast port sweep, then targeted service identification.",
+        "args": (),
         "timeout": 75,
+        "staged": True,
+        "discovery_args": ("-PR", "-sT", "--top-ports", "1000", "-T4", "--max-retries", "1", "--host-timeout", "30s"),
+        "probe_args": ("-Pn", "-sT", "--script", "banner,http-title,http-headers,ssl-cert,ssh-hostkey", "--script-timeout", "5s", "-T4", "--max-retries", "1", "--host-timeout", "15s"),
         "max_hosts": 1,
     },
     "udp_host": {
@@ -242,10 +240,44 @@ class NetworkScanner:
         threading.Thread(target=self._run, args=(job, profile), daemon=True).start()
         return {key: value for key, value in job.items() if not key.startswith("_")}
 
+    def _run_nmap(self, args, target, timeout):
+        result = subprocess.run(["nmap", *args, "-oX", "-", target], capture_output=True, text=True, timeout=timeout, check=False)
+        if result.returncode != 0:
+            raise RuntimeError(result.stderr.strip() or f"nmap exited with status {result.returncode}")
+        return result.stdout
+
+    def _run_staged_deep_host(self, job, profile):
+        with self.lock:
+            if self.running and self.running.get("id") == job["id"]:
+                self.running["stage"] = "port_sweep"
+                self.running["open_ports"] = []
+        sweep = parse_nmap_xml(self._run_nmap(profile["discovery_args"], job["target"], profile["timeout"]))
+        open_ports = sorted({p["port"] for h in sweep["hosts"] for p in h.get("ports", []) if p.get("protocol") == "tcp" and p.get("state") == "open"})
+        with self.lock:
+            if self.running and self.running.get("id") == job["id"]:
+                self.running["stage"] = "service_probe" if open_ports else "complete"
+                self.running["open_ports"] = open_ports
+        if not open_ports:
+            return sweep, {"port_sweep_seconds": sweep.get("elapsed_seconds"), "service_probe_seconds": 0.0, "open_ports": []}
+        args = [*profile["probe_args"], "-p", ",".join(str(p) for p in open_ports)]
+        detail = parse_nmap_xml(self._run_nmap(args, job["target"], profile["timeout"]))
+        prior = {h.get("ip"): h for h in sweep["hosts"]}
+        for host in detail["hosts"]:
+            old = prior.get(host.get("ip")) or {}
+            for key in ("mac", "vendor"):
+                if not host.get(key) and old.get(key): host[key] = old[key]
+            if not host.get("ports") and old.get("ports"):
+                host["ports"] = old["ports"]
+        return detail, {"port_sweep_seconds": sweep.get("elapsed_seconds"), "service_probe_seconds": detail.get("elapsed_seconds"), "open_ports": open_ports}
+
     def _run(self, job, profile):
         command = ["nmap", *profile["args"], "-oX", "-", job["target"]]
         try:
-            if profile.get("privileged_helper") == "udp":
+            stage_metrics = None
+            if profile.get("staged"):
+                parsed, stage_metrics = self._run_staged_deep_host(job, profile)
+                output = None
+            elif profile.get("privileged_helper") == "udp":
                 request = json.dumps({"target": job["target"]}).encode()
 
                 with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as client:
@@ -269,21 +301,10 @@ class NetworkScanner:
 
                 output = helper.get("stdout", "")
             else:
-                result = subprocess.run(
-                    command,
-                    capture_output=True,
-                    text=True,
-                    timeout=profile["timeout"],
-                    check=False,
-                )
-                if result.returncode != 0:
-                    raise RuntimeError(
-                        result.stderr.strip()
-                        or f"nmap exited with status {result.returncode}"
-                    )
-                output = result.stdout
+                output = self._run_nmap(profile["args"], job["target"], profile["timeout"])
 
-            parsed = parse_nmap_xml(output)
+            if not profile.get("staged"):
+                parsed = parse_nmap_xml(output)
             wireless = {
                 (item.get("mac") or item.get("bssid", "")).lower(): item
                 for item in self.wireless_snapshot()
@@ -306,6 +327,8 @@ class NetworkScanner:
                 "host_count": len(parsed["hosts"]),
                 **parsed,
             }
+            if stage_metrics is not None:
+                completed["stages"] = stage_metrics
             output_dir = Path(job["_output_dir"]) if job.get("_output_dir") else self.root / "recordings"
             output_dir.mkdir(parents=True, exist_ok=True)
             output_path = output_dir / f"{job['id']}.json"
